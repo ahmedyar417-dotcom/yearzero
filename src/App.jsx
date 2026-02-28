@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 
-// ─── localStorage persistence ────────────────────────────────────────────────
+// ─── localStorage ────────────────────────────────────────────────────────────
 const ls = {
   get(key) {
     try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }
@@ -15,12 +15,14 @@ const ls = {
 const getWeekKey = () => {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Monday
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
   return `yz-week-${d.toISOString().slice(0, 10)}`;
 };
 
-// ─── Config ──────────────────────────────────────────────────────────────────
-const SECTIONS = {
+const uid = () => Math.random().toString(36).slice(2, 8);
+
+// ─── Default config ───────────────────────────────────────────────────────────
+const DEFAULT_SECTIONS = {
   business: {
     label: "Business", color: "#00FF88", icon: "◈", goal: "Leave Corporate · £15k/month",
     daily: [
@@ -30,10 +32,10 @@ const SECTIONS = {
       { label: "Pipeline update", unit: "10min", key: "d3" },
     ],
     weekly: [
-      { label: "Reach outs", min: 0, max: 700, target: 500, unit: "reach outs", suffix: "/ 500" },
-      { label: "Sales calls", min: 0, max: 15, target: 4, unit: "calls", suffix: "/ 4–6" },
-      { label: "CRM cleanup", min: 0, max: 4, target: 1, unit: "hrs", suffix: "/ 1–2 hrs" },
-      { label: "Authority post", min: 0, max: 5, target: 1, unit: "posts", suffix: "/ 1" },
+      { label: "Reach outs", min: 0, max: 700, target: 500, unit: "reach outs", suffix: "/ 500", key: "w0" },
+      { label: "Sales calls", min: 0, max: 15, target: 4, unit: "calls", suffix: "/ 4–6", key: "w1" },
+      { label: "CRM cleanup", min: 0, max: 4, target: 1, unit: "hrs", suffix: "/ 1–2 hrs", key: "w2" },
+      { label: "Authority post", min: 0, max: 5, target: 1, unit: "posts", suffix: "/ 1", key: "w3" },
     ],
   },
   fatLoss: {
@@ -45,10 +47,10 @@ const SECTIONS = {
       { label: "2–3L water", unit: "L", key: "d3" },
     ],
     weekly: [
-      { label: "Strength sessions", min: 0, max: 7, target: 3, unit: "sessions", suffix: "/ 3" },
-      { label: "Cardio sessions", min: 0, max: 7, target: 1, unit: "sessions", suffix: "/ 1 opt." },
-      { label: "Weigh-ins", min: 0, max: 7, target: 7, unit: "days", suffix: "/ 7" },
-      { label: "Avg loss (kg)", min: 0, max: 2, target: 0.35, unit: "kg", suffix: "/ −0.35 kg", step: 0.05 },
+      { label: "Strength sessions", min: 0, max: 7, target: 3, unit: "sessions", suffix: "/ 3", key: "w0" },
+      { label: "Cardio sessions", min: 0, max: 7, target: 1, unit: "sessions", suffix: "/ 1 opt.", key: "w1" },
+      { label: "Weigh-ins", min: 0, max: 7, target: 7, unit: "days", suffix: "/ 7", key: "w2" },
+      { label: "Avg loss (kg)", min: 0, max: 2, target: 0.35, unit: "kg", suffix: "/ −0.35 kg", step: 0.05, key: "w3" },
     ],
   },
   savings: {
@@ -60,10 +62,10 @@ const SECTIONS = {
       { label: "CC paid in full", unit: "monthly", key: "d3" },
     ],
     weekly: [
-      { label: "Net worth updated", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check" },
-      { label: "Spending reviewed", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check" },
-      { label: "Business cash logged", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check" },
-      { label: "50% profit transferred", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check" },
+      { label: "Net worth updated", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check", key: "w0" },
+      { label: "Spending reviewed", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check", key: "w1" },
+      { label: "Business cash logged", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check", key: "w2" },
+      { label: "50% profit transferred", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check", key: "w3" },
     ],
   },
   social: {
@@ -75,10 +77,10 @@ const SECTIONS = {
       { label: "Meaningful comments", unit: "5–10", key: "d3" },
     ],
     weekly: [
-      { label: "Main posts", min: 0, max: 10, target: 5, unit: "posts", suffix: "/ 5" },
-      { label: "Reels / videos", min: 0, max: 10, target: 3, unit: "videos", suffix: "/ 3" },
-      { label: "Comments left", min: 0, max: 150, target: 35, unit: "comments", suffix: "/ 35–70" },
-      { label: "DMs sent", min: 0, max: 50, target: 20, unit: "DMs", suffix: "/ 20" },
+      { label: "Main posts", min: 0, max: 10, target: 5, unit: "posts", suffix: "/ 5", key: "w0" },
+      { label: "Reels / videos", min: 0, max: 10, target: 3, unit: "videos", suffix: "/ 3", key: "w1" },
+      { label: "Comments left", min: 0, max: 150, target: 35, unit: "comments", suffix: "/ 35–70", key: "w2" },
+      { label: "DMs sent", min: 0, max: 50, target: 20, unit: "DMs", suffix: "/ 20", key: "w3" },
     ],
   },
 };
@@ -90,19 +92,9 @@ const SCHED = [
   { label: "SUNDAY", sub: "6–7 hrs", color: "#FFD700", blocks: ["2hrs — Sales calls / review recordings", "1.5hrs — Long walk / cardio", "1.5hrs — Record, edit, schedule content", "1hr — Metrics review + next week plan"] },
 ];
 
-const emptyChecks = () => Object.fromEntries(Object.keys(SECTIONS).map(k => [k, [false, false, false, false]]));
-const emptyActuals = () => Object.fromEntries(Object.keys(SECTIONS).map(k => [k, [null, null, null, null]]));
-
-const weekPct = (checks, actuals) => {
-  const sKeys = Object.keys(SECTIONS);
-  let done = 0, total = 0;
-  sKeys.forEach(sec => {
-    done += (checks[sec] || []).filter(Boolean).length;
-    done += SECTIONS[sec].weekly.filter((w, i) => { const a = (actuals[sec] || [])[i]; return a !== null && a !== undefined && a >= w.target; }).length;
-    total += SECTIONS[sec].daily.length + SECTIONS[sec].weekly.length;
-  });
-  return Math.round((done / total) * 100);
-};
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const emptyChecks = (sections) => Object.fromEntries(Object.keys(sections).map(k => [k, sections[k].daily.map(() => false)]));
+const emptyActuals = (sections) => Object.fromEntries(Object.keys(sections).map(k => [k, sections[k].weekly.map(() => null)]));
 
 // ─── Components ───────────────────────────────────────────────────────────────
 function Ring({ pct, color, size = 60 }) {
@@ -117,17 +109,112 @@ function Ring({ pct, color, size = 60 }) {
   );
 }
 
-function CheckRow({ label, done, color, onToggle }) {
+function CheckRow({ label, done, color, onToggle, editMode, onDelete }) {
   return (
-    <button onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer", padding: "5px 0", width: "100%", textAlign: "left" }}>
-      <span style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${done ? color : "#3a3a3a"}`, background: done ? color + "22" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.18s", boxShadow: done ? `0 0 7px ${color}55` : "none" }}>
-        {done && <span style={{ color, fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
-      </span>
-      <span style={{ fontSize: 13, color: done ? "#444" : "#bbb", textDecoration: done ? "line-through" : "none", letterSpacing: 0.2 }}>{label}</span>
-    </button>
+    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0" }}>
+      {editMode ? (
+        <button onClick={onDelete} style={{ width: 20, height: 20, borderRadius: "50%", background: "#FF6B3522", border: "1px solid #FF6B3566", color: "#FF6B35", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, lineHeight: 1 }}>×</button>
+      ) : null}
+      <button onClick={editMode ? undefined : onToggle} style={{ display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", cursor: editMode ? "default" : "pointer", padding: "2px 0", flex: 1, textAlign: "left", opacity: editMode ? 0.6 : 1 }}>
+        <span style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${done ? color : "#3a3a3a"}`, background: done ? color + "22" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.18s", boxShadow: done ? `0 0 7px ${color}55` : "none" }}>
+          {done && <span style={{ color, fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+        </span>
+        <span style={{ fontSize: 13, color: done ? "#444" : "#bbb", textDecoration: done ? "line-through" : "none", letterSpacing: 0.2 }}>{label}</span>
+      </button>
+    </div>
   );
 }
 
+// ─── Add Item Modal ───────────────────────────────────────────────────────────
+function AddDailyModal({ color, onSave, onClose }) {
+  const [label, setLabel] = useState("");
+  const [unit, setUnit] = useState("");
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "#000d", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#141414", border: `1px solid ${color}55`, borderRadius: 18, padding: 28, width: "min(360px, 94vw)" }}>
+        <p style={{ fontSize: 9, color: "#555", letterSpacing: 2, margin: "0 0 4px" }}>ADD DAILY TASK</p>
+        <p style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 22, color: "#fff", letterSpacing: 1, margin: "0 0 20px" }}>New Non-Negotiable</p>
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 10, color: "#555", letterSpacing: 1, display: "block", marginBottom: 6 }}>TASK LABEL</label>
+          <input value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. 30min reading" autoFocus
+            style={{ width: "100%", background: "#1a1a1a", border: `1px solid ${color}33`, borderRadius: 10, padding: "10px 14px", color: "#fff", fontSize: 13, outline: "none", fontFamily: "inherit" }} />
+        </div>
+        <div style={{ marginBottom: 24 }}>
+          <label style={{ fontSize: 10, color: "#555", letterSpacing: 1, display: "block", marginBottom: 6 }}>UNIT / NOTE <span style={{ color: "#333" }}>(optional)</span></label>
+          <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="e.g. min, /day, pages"
+            style={{ width: "100%", background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 10, padding: "10px 14px", color: "#fff", fontSize: 13, outline: "none", fontFamily: "inherit" }} />
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1px solid #2a2a2a", background: "#1a1a1a", color: "#555", fontSize: 11, cursor: "pointer", letterSpacing: 1 }}>CANCEL</button>
+          <button onClick={() => label.trim() && onSave({ label: label.trim(), unit: unit.trim() || "✓", key: uid() })}
+            style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: `1px solid ${color}55`, background: color + "20", color, fontFamily: "'Bebas Neue', cursive", fontSize: 17, cursor: "pointer", letterSpacing: 2, opacity: label.trim() ? 1 : 0.4 }}>ADD TASK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddWeeklyModal({ color, onSave, onClose }) {
+  const [label, setLabel] = useState("");
+  const [target, setTarget] = useState("");
+  const [unit, setUnit] = useState("");
+  const [max, setMax] = useState("");
+  const [isCheck, setIsCheck] = useState(false);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "#000d", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#141414", border: `1px solid ${color}55`, borderRadius: 18, padding: 28, width: "min(360px, 94vw)" }}>
+        <p style={{ fontSize: 9, color: "#555", letterSpacing: 2, margin: "0 0 4px" }}>ADD WEEKLY TARGET</p>
+        <p style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 22, color: "#fff", letterSpacing: 1, margin: "0 0 20px" }}>New Target</p>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 10, color: "#555", letterSpacing: 1, display: "block", marginBottom: 6 }}>LABEL</label>
+          <input value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Client calls" autoFocus
+            style={{ width: "100%", background: "#1a1a1a", border: `1px solid ${color}33`, borderRadius: 10, padding: "10px 14px", color: "#fff", fontSize: 13, outline: "none", fontFamily: "inherit" }} />
+        </div>
+
+        {/* Check vs number toggle */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          {["Number", "Done/Not done"].map((opt, i) => (
+            <button key={opt} onClick={() => setIsCheck(i === 1)} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${(i === 1) === isCheck ? color + "66" : "#2a2a2a"}`, background: (i === 1) === isCheck ? color + "15" : "#1a1a1a", color: (i === 1) === isCheck ? color : "#555", fontSize: 11, cursor: "pointer", letterSpacing: 0.5 }}>{opt}</button>
+          ))}
+        </div>
+
+        {!isCheck && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+            <div>
+              <label style={{ fontSize: 10, color: "#555", letterSpacing: 1, display: "block", marginBottom: 6 }}>TARGET</label>
+              <input type="number" value={target} onChange={e => setTarget(e.target.value)} placeholder="5"
+                style={{ width: "100%", background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 10, padding: "10px 10px", color: "#fff", fontSize: 13, outline: "none", fontFamily: "inherit" }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 10, color: "#555", letterSpacing: 1, display: "block", marginBottom: 6 }}>MAX</label>
+              <input type="number" value={max} onChange={e => setMax(e.target.value)} placeholder="20"
+                style={{ width: "100%", background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 10, padding: "10px 10px", color: "#fff", fontSize: 13, outline: "none", fontFamily: "inherit" }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 10, color: "#555", letterSpacing: 1, display: "block", marginBottom: 6 }}>UNIT</label>
+              <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="calls"
+                style={{ width: "100%", background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 10, padding: "10px 10px", color: "#fff", fontSize: 13, outline: "none", fontFamily: "inherit" }} />
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, marginTop: isCheck ? 10 : 0 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1px solid #2a2a2a", background: "#1a1a1a", color: "#555", fontSize: 11, cursor: "pointer", letterSpacing: 1 }}>CANCEL</button>
+          <button onClick={() => {
+            if (!label.trim()) return;
+            const t = isCheck ? 1 : parseFloat(target) || 1;
+            const m = isCheck ? 1 : parseFloat(max) || t * 3;
+            const u = isCheck ? "done" : (unit.trim() || "count");
+            onSave({ label: label.trim(), min: 0, max: m, target: t, unit: u, suffix: `/ ${t}`, key: uid(), ...(isCheck ? { type: "check" } : {}) });
+          }} style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: `1px solid ${color}55`, background: color + "20", color, fontFamily: "'Bebas Neue', cursive", fontSize: 17, cursor: "pointer", letterSpacing: 2, opacity: label.trim() ? 1 : 0.4 }}>ADD TARGET</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Input Modal (log progress) ───────────────────────────────────────────────
 function InputModal({ item, color, onSave, onClose }) {
   const [val, setVal] = useState(item.actual ?? 0);
   const isCheck = item.type === "check";
@@ -180,82 +267,148 @@ function InputModal({ item, color, onSave, onClose }) {
   );
 }
 
-function WeekCard({ item, color, onClick }) {
+// ─── Weekly target card ───────────────────────────────────────────────────────
+function WeekCard({ item, color, onClick, editMode, onDelete }) {
   const hasData = item.actual !== null && item.actual !== undefined;
   const isCheck = item.type === "check";
   const pct = hasData ? Math.min(Math.round((item.actual / item.target) * 100), 100) : 0;
   const hit = hasData && item.actual >= item.target;
   const dc = hit ? "#00FF88" : color;
   return (
-    <button onClick={onClick} style={{ position: "relative", overflow: "hidden", background: hasData ? color + "08" : "#181818", borderRadius: 10, padding: "10px 12px", border: `1px solid ${hasData ? color + "40" : "#242424"}`, cursor: "pointer", textAlign: "left", width: "100%" }}>
-      {hasData && <div style={{ position: "absolute", inset: 0, width: `${pct}%`, background: `linear-gradient(90deg, ${color}14, transparent)`, pointerEvents: "none" }} />}
-      <div style={{ position: "relative" }}>
-        <div style={{ fontSize: 10, color: "#555", marginBottom: 3 }}>{item.label}</div>
-        {hasData ? (
-          <>
-            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, color: dc, letterSpacing: 1, filter: `drop-shadow(0 0 5px ${dc}55)` }}>
-              {isCheck ? (item.actual === 1 ? "✓ DONE" : "✗ PENDING") : item.actual}
-              {!isCheck && <span style={{ fontSize: 9, color: "#444", marginLeft: 5 }}>{item.suffix}</span>}
-            </div>
-            {!isCheck && <div style={{ marginTop: 5, height: 2, background: "#1e1e1e", borderRadius: 1, overflow: "hidden" }}><div style={{ height: "100%", width: `${pct}%`, background: dc }} /></div>}
-          </>
-        ) : (
-          <div style={{ fontSize: 11, color: "#383838" }}>tap to log {item.suffix}</div>
-        )}
-      </div>
-    </button>
+    <div style={{ position: "relative" }}>
+      {editMode && (
+        <button onClick={onDelete} style={{ position: "absolute", top: -7, right: -7, zIndex: 10, width: 20, height: 20, borderRadius: "50%", background: "#FF6B3522", border: "1px solid #FF6B3566", color: "#FF6B35", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>×</button>
+      )}
+      <button onClick={editMode ? undefined : onClick} style={{ position: "relative", overflow: "hidden", background: hasData ? color + "08" : "#181818", borderRadius: 10, padding: "10px 12px", border: `1px solid ${editMode ? color + "30" : hasData ? color + "40" : "#242424"}`, cursor: editMode ? "default" : "pointer", textAlign: "left", width: "100%", opacity: editMode ? 0.7 : 1 }}>
+        {hasData && !editMode && <div style={{ position: "absolute", inset: 0, width: `${pct}%`, background: `linear-gradient(90deg, ${color}14, transparent)`, pointerEvents: "none" }} />}
+        <div style={{ position: "relative" }}>
+          <div style={{ fontSize: 10, color: "#555", marginBottom: 3 }}>{item.label}</div>
+          {hasData && !editMode ? (
+            <>
+              <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, color: dc, letterSpacing: 1 }}>
+                {isCheck ? (item.actual === 1 ? "✓ DONE" : "✗ PENDING") : item.actual}
+                {!isCheck && <span style={{ fontSize: 9, color: "#444", marginLeft: 5 }}>{item.suffix}</span>}
+              </div>
+              {!isCheck && <div style={{ marginTop: 5, height: 2, background: "#1e1e1e", borderRadius: 1, overflow: "hidden" }}><div style={{ height: "100%", width: `${pct}%`, background: dc }} /></div>}
+            </>
+          ) : (
+            <div style={{ fontSize: 11, color: editMode ? "#555" : "#383838" }}>{editMode ? item.suffix : `tap to log ${item.suffix}`}</div>
+          )}
+        </div>
+      </button>
+    </div>
   );
 }
 
-function GoalCard({ sectionKey, checks, onCheck, actuals, onSave }) {
-  const s = SECTIONS[sectionKey];
+// ─── Goal Card ────────────────────────────────────────────────────────────────
+function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editMode, onUpdateSection }) {
   const [modal, setModal] = useState(null);
+  const [addDaily, setAddDaily] = useState(false);
+  const [addWeekly, setAddWeekly] = useState(false);
+
   const dd = checks.filter(Boolean).length;
-  const wh = s.weekly.filter((w, i) => { const a = actuals[i]; return a !== null && a !== undefined && a >= w.target; }).length;
-  const pct = Math.round(((dd + wh) / (s.daily.length + s.weekly.length)) * 100);
+  const wh = section.weekly.filter((w, i) => { const a = actuals[i]; return a !== null && a !== undefined && a >= w.target; }).length;
+  const pct = section.daily.length + section.weekly.length > 0
+    ? Math.round(((dd + wh) / (section.daily.length + section.weekly.length)) * 100)
+    : 0;
+
+  const deleteDaily = (idx) => {
+    const newDaily = section.daily.filter((_, i) => i !== idx);
+    onUpdateSection(sectionKey, { ...section, daily: newDaily });
+  };
+  const deleteWeekly = (idx) => {
+    const newWeekly = section.weekly.filter((_, i) => i !== idx);
+    onUpdateSection(sectionKey, { ...section, weekly: newWeekly });
+  };
+  const addDailyItem = (item) => {
+    onUpdateSection(sectionKey, { ...section, daily: [...section.daily, item] });
+    setAddDaily(false);
+  };
+  const addWeeklyItem = (item) => {
+    onUpdateSection(sectionKey, { ...section, weekly: [...section.weekly, item] });
+    setAddWeekly(false);
+  };
+
   return (
     <>
-      {modal !== null && <InputModal item={{ ...s.weekly[modal], actual: actuals[modal] ?? 0 }} color={s.color} onSave={v => { onSave(sectionKey, modal, v); setModal(null); }} onClose={() => setModal(null)} />}
-      <div style={{ background: "#111", border: `1px solid ${s.color}20`, borderRadius: 16, padding: 22, display: "flex", flexDirection: "column", gap: 18, position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: -30, right: -30, width: 130, height: 130, borderRadius: "50%", background: `radial-gradient(circle, ${s.color}07 0%, transparent 70%)`, pointerEvents: "none" }} />
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      {modal !== null && !editMode && (
+        <InputModal item={{ ...section.weekly[modal], actual: actuals[modal] ?? 0 }} color={section.color}
+          onSave={v => { onSave(sectionKey, modal, v); setModal(null); }}
+          onClose={() => setModal(null)} />
+      )}
+      {addDaily && <AddDailyModal color={section.color} onSave={addDailyItem} onClose={() => setAddDaily(false)} />}
+      {addWeekly && <AddWeeklyModal color={section.color} onSave={addWeeklyItem} onClose={() => setAddWeekly(false)} />}
+
+      <div style={{ background: "#111", border: `1px solid ${editMode ? section.color + "44" : section.color + "20"}`, borderRadius: 16, padding: 22, display: "flex", flexDirection: "column", gap: 18, position: "relative", overflow: "hidden", transition: "border-color 0.2s" }}>
+        {editMode && (
+          <div style={{ position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)", background: section.color + "22", border: `1px solid ${section.color}44`, borderRadius: 6, padding: "2px 10px", fontSize: 9, color: section.color, letterSpacing: 2, whiteSpace: "nowrap" }}>EDITING</div>
+        )}
+        <div style={{ position: "absolute", top: -30, right: -30, width: 130, height: 130, borderRadius: "50%", background: `radial-gradient(circle, ${section.color}07 0%, transparent 70%)`, pointerEvents: "none" }} />
+
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginTop: editMode ? 16 : 0 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
-              <span style={{ color: s.color, fontSize: 18 }}>{s.icon}</span>
-              <span style={{ color: s.color, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>{s.label}</span>
+              <span style={{ color: section.color, fontSize: 18 }}>{section.icon}</span>
+              <span style={{ color: section.color, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>{section.label}</span>
             </div>
-            <div style={{ color: "#fff", fontFamily: "'Bebas Neue', cursive", fontSize: 20, letterSpacing: 1 }}>{s.goal}</div>
+            <div style={{ color: "#fff", fontFamily: "'Bebas Neue', cursive", fontSize: 20, letterSpacing: 1 }}>{section.goal}</div>
           </div>
           <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Ring pct={pct} color={s.color} size={60} />
+            <Ring pct={pct} color={section.color} size={60} />
             <span style={{ position: "absolute", fontFamily: "'Bebas Neue', cursive", fontSize: 13, color: "#fff", letterSpacing: 1 }}>{pct}%</span>
           </div>
         </div>
+
+        {/* Daily */}
         <div style={{ borderTop: "1px solid #1e1e1e", paddingTop: 14 }}>
           <div style={{ fontSize: 9, color: "#444", letterSpacing: 2, marginBottom: 7 }}>DAILY NON-NEGOTIABLES</div>
-          {s.daily.map((item, i) => <CheckRow key={item.key} label={`${item.label} · ${item.unit}`} done={checks[i]} color={s.color} onToggle={() => onCheck(sectionKey, i)} />)}
+          {section.daily.map((item, i) => (
+            <CheckRow key={item.key} label={`${item.label} · ${item.unit}`} done={checks[i] || false} color={section.color}
+              onToggle={() => onCheck(sectionKey, i)} editMode={editMode} onDelete={() => deleteDaily(i)} />
+          ))}
+          {editMode && (
+            <button onClick={() => setAddDaily(true)} style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, background: section.color + "12", border: `1px dashed ${section.color}44`, borderRadius: 8, padding: "7px 12px", cursor: "pointer", color: section.color, fontSize: 11, letterSpacing: 1, width: "100%" }}>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> ADD DAILY TASK
+            </button>
+          )}
         </div>
+
+        {/* Weekly */}
         <div style={{ borderTop: "1px solid #1e1e1e", paddingTop: 14 }}>
-          <div style={{ fontSize: 9, color: "#444", letterSpacing: 2, marginBottom: 10 }}>WEEKLY TARGETS <span style={{ color: "#2a2a2a" }}>· tap to log</span></div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-            {s.weekly.map((w, i) => <WeekCard key={i} item={{ ...w, actual: actuals[i] }} color={s.color} onClick={() => setModal(i)} />)}
+          <div style={{ fontSize: 9, color: "#444", letterSpacing: 2, marginBottom: 10 }}>
+            WEEKLY TARGETS {!editMode && <span style={{ color: "#2a2a2a" }}>· tap to log</span>}
           </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+            {section.weekly.map((w, i) => (
+              <WeekCard key={w.key} item={{ ...w, actual: actuals[i] }} color={section.color}
+                onClick={() => setModal(i)} editMode={editMode} onDelete={() => deleteWeekly(i)} />
+            ))}
+          </div>
+          {editMode && (
+            <button onClick={() => setAddWeekly(true)} style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, background: section.color + "12", border: `1px dashed ${section.color}44`, borderRadius: 8, padding: "7px 12px", cursor: "pointer", color: section.color, fontSize: 11, letterSpacing: 1, width: "100%" }}>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> ADD WEEKLY TARGET
+            </button>
+          )}
         </div>
       </div>
     </>
   );
 }
 
-function HistoryModal({ history, onClose }) {
+// ─── History Modal ────────────────────────────────────────────────────────────
+function HistoryModal({ history, sectionKeys, onClose }) {
   const weeks = Object.entries(history).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 20);
   const fmt = d => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const COLORS = { business: "#00FF88", fatLoss: "#FF6B35", savings: "#FFD700", social: "#A78BFA" };
+  const LABELS = { business: "Business", fatLoss: "Fat Loss", savings: "Savings", social: "Social" };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "#000d", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "#111", border: "1px solid #2a2a2a", borderRadius: 18, padding: 24, width: "min(680px, 96vw)", maxHeight: "85vh", overflow: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <div>
             <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 22, color: "#fff", letterSpacing: 2 }}>WEEK HISTORY</div>
-            <div style={{ fontSize: 9, color: "#444", letterSpacing: 1 }}>{weeks.length} weeks saved · data stored in your browser</div>
+            <div style={{ fontSize: 9, color: "#444", letterSpacing: 1 }}>{weeks.length} weeks saved</div>
           </div>
           <button onClick={onClose} style={{ background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 8, color: "#666", padding: "7px 14px", cursor: "pointer", fontSize: 10 }}>CLOSE</button>
         </div>
@@ -264,12 +417,13 @@ function HistoryModal({ history, onClose }) {
         ) : weeks.map(([key, wd]) => {
           const dateStr = key.replace("yz-week-", "");
           const endD = new Date(dateStr); endD.setDate(endD.getDate() + 6);
-          const pcts = Object.keys(SECTIONS).map(sec => {
-            const c = wd.checks?.[sec] || [false, false, false, false];
-            const a = wd.actuals?.[sec] || [null, null, null, null];
-            const d2 = c.filter(Boolean).length;
-            const w2 = SECTIONS[sec].weekly.filter((w, i) => { const v = a[i]; return v !== null && v !== undefined && v >= w.target; }).length;
-            return Math.round(((d2 + w2) / (SECTIONS[sec].daily.length + SECTIONS[sec].weekly.length)) * 100);
+          // For history display we use fixed 4-item counts since history is immutable
+          const pcts = sectionKeys.map(sec => {
+            const c = wd.checks?.[sec] || [];
+            const a = wd.actuals?.[sec] || [];
+            const total = (wd.sectionSnapshot?.[sec]?.daily?.length || 4) + (wd.sectionSnapshot?.[sec]?.weekly?.length || 4);
+            const done = c.filter(Boolean).length + (wd.sectionSnapshot?.[sec]?.weekly || DEFAULT_SECTIONS[sec]?.weekly || []).filter((w, i) => { const v = a[i]; return v !== null && v !== undefined && v >= w.target; }).length;
+            return total > 0 ? Math.round((done / total) * 100) : 0;
           });
           const overall = Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length);
           const oc = overall >= 75 ? "#00FF88" : overall >= 50 ? "#FFD700" : "#FF6B35";
@@ -277,14 +431,14 @@ function HistoryModal({ history, onClose }) {
             <div key={key} style={{ background: "#181818", borderRadius: 12, padding: 16, marginBottom: 10, border: "1px solid #222" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                 <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 17, color: "#ccc", letterSpacing: 1 }}>{fmt(dateStr)} – {fmt(endD)}</div>
-                <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 26, color: oc, filter: `drop-shadow(0 0 6px ${oc}55)` }}>{overall}%</div>
+                <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 26, color: oc }}>{overall}%</div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                {Object.keys(SECTIONS).map((sec, i) => (
+                {sectionKeys.map((sec, i) => (
                   <div key={sec} style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 9, color: "#444", marginBottom: 4 }}>{SECTIONS[sec].label}</div>
-                    <div style={{ height: 3, background: "#252525", borderRadius: 2, overflow: "hidden", marginBottom: 3 }}><div style={{ height: "100%", width: `${pcts[i]}%`, background: SECTIONS[sec].color }} /></div>
-                    <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 13, color: SECTIONS[sec].color }}>{pcts[i]}%</div>
+                    <div style={{ fontSize: 9, color: "#444", marginBottom: 4 }}>{LABELS[sec] || sec}</div>
+                    <div style={{ height: 3, background: "#252525", borderRadius: 2, overflow: "hidden", marginBottom: 3 }}><div style={{ height: "100%", width: `${pcts[i]}%`, background: COLORS[sec] || "#fff" }} /></div>
+                    <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 13, color: COLORS[sec] || "#fff" }}>{pcts[i]}%</div>
                   </div>
                 ))}
               </div>
@@ -305,13 +459,16 @@ export default function App() {
   const dayLabel = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][today.getDay()];
   const WEEK_KEY = getWeekKey();
 
-  const [checks, setChecks] = useState(emptyChecks);
-  const [actuals, setActuals] = useState(emptyActuals);
+  // sections = live config (can be edited)
+  const [sections, setSections] = useState(() => ls.get("yz-sections") || DEFAULT_SECTIONS);
+  const [checks, setChecks] = useState(() => emptyChecks(ls.get("yz-sections") || DEFAULT_SECTIONS));
+  const [actuals, setActuals] = useState(() => emptyActuals(ls.get("yz-sections") || DEFAULT_SECTIONS));
   const [history, setHistory] = useState({});
   const [saveFlash, setSaveFlash] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [editMode, setEditMode] = useState(false);
 
-  // Load from localStorage on mount
+  // Load week data on mount
   useEffect(() => {
     const wd = ls.get(WEEK_KEY);
     if (wd?.checks) setChecks(wd.checks);
@@ -320,29 +477,45 @@ export default function App() {
     setHistory(hist);
   }, []);
 
-  const persist = useCallback((nc, na) => {
-    const wd = { checks: nc, actuals: na, savedAt: Date.now() };
+  const flash = () => { setSaveFlash(true); setTimeout(() => setSaveFlash(false), 1400); };
+
+  const persist = useCallback((nc, na, sec) => {
+    const wd = { checks: nc, actuals: na, savedAt: Date.now(), sectionSnapshot: sec };
     ls.set(WEEK_KEY, wd);
     const newHist = { ...history, [WEEK_KEY]: wd };
     const trimmed = Object.fromEntries(Object.keys(newHist).sort().reverse().slice(0, 52).map(k => [k, newHist[k]]));
     ls.set("yz-history", trimmed);
     setHistory(trimmed);
-    setSaveFlash(true);
-    setTimeout(() => setSaveFlash(false), 1400);
+    flash();
   }, [history, WEEK_KEY]);
 
   const handleCheck = (sec, idx) => {
-    const next = { ...checks, [sec]: checks[sec].map((v, i) => i === idx ? !v : v) };
-    setChecks(next); persist(next, actuals);
-  };
-  const handleSave = (sec, idx, val) => {
-    const next = { ...actuals, [sec]: actuals[sec].map((v, i) => i === idx ? val : v) };
-    setActuals(next); persist(checks, next);
+    const cur = checks[sec] || [];
+    const next = { ...checks, [sec]: cur.map((v, i) => i === idx ? !v : v) };
+    setChecks(next); persist(next, actuals, sections);
   };
 
-  const allDaily = Object.values(checks).flat();
+  const handleSave = (sec, idx, val) => {
+    const cur = actuals[sec] || [];
+    const next = { ...actuals, [sec]: cur.map((v, i) => i === idx ? val : v) };
+    setActuals(next); persist(checks, next, sections);
+  };
+
+  const handleUpdateSection = (secKey, newSection) => {
+    const newSections = { ...sections, [secKey]: newSection };
+    setSections(newSections);
+    ls.set("yz-sections", newSections);
+    // Reconcile checks/actuals arrays to match new lengths
+    const newChecks = { ...checks, [secKey]: newSection.daily.map((_, i) => checks[secKey]?.[i] || false) };
+    const newActuals = { ...actuals, [secKey]: newSection.weekly.map((_, i) => actuals[secKey]?.[i] ?? null) };
+    setChecks(newChecks);
+    setActuals(newActuals);
+    persist(newChecks, newActuals, newSections);
+  };
+
+  const allDaily = Object.keys(sections).flatMap(k => (checks[k] || []));
   const dailyDone = allDaily.filter(Boolean).length;
-  const dailyPct = Math.round((dailyDone / allDaily.length) * 100);
+  const dailyPct = allDaily.length > 0 ? Math.round((dailyDone / allDaily.length) * 100) : 0;
   const topColor = dailyPct >= 75 ? "#00FF88" : dailyPct >= 45 ? "#FFD700" : "#FF6B35";
   const pastWeeks = Object.keys(history).filter(k => k !== WEEK_KEY).length;
 
@@ -358,22 +531,32 @@ export default function App() {
         button { font-family: inherit; transition: opacity 0.15s; }
         button:hover { opacity: 0.82; }
         button:active { opacity: 0.65; transform: scale(0.97); }
+        input { font-family: inherit; }
+        input::placeholder { color: #444; }
       `}</style>
 
-      {showHistory && <HistoryModal history={history} onClose={() => setShowHistory(false)} />}
+      {showHistory && <HistoryModal history={history} sectionKeys={Object.keys(sections)} onClose={() => setShowHistory(false)} />}
 
       {/* Save flash */}
-      <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 5000, background: "#141414", border: "1px solid #00FF8855", borderRadius: 10, padding: "9px 16px", fontSize: 11, color: "#00FF88", letterSpacing: 1, transition: "opacity 0.3s", opacity: saveFlash ? 1 : 0, pointerEvents: "none" }}>
-        ✓ Saved
-      </div>
+      <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 5000, background: "#141414", border: "1px solid #00FF8855", borderRadius: 10, padding: "9px 16px", fontSize: 11, color: "#00FF88", letterSpacing: 1, transition: "opacity 0.3s", opacity: saveFlash ? 1 : 0, pointerEvents: "none" }}>✓ Saved</div>
+
+      {/* Edit mode banner */}
+      {editMode && (
+        <div style={{ background: "#1a0a00", borderBottom: "1px solid #FF6B3533", padding: "8px 20px", textAlign: "center", fontSize: 10, color: "#FF6B35", letterSpacing: 2 }}>
+          EDIT MODE ON · Changes apply going forward · Past weeks unchanged
+        </div>
+      )}
 
       {/* Top bar */}
-      <div style={{ borderBottom: "1px solid #1a1a1a", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: "#0a0a0a", zIndex: 100 }}>
+      <div style={{ borderBottom: "1px solid #1a1a1a", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: editMode ? 33 : 0, background: "#0a0a0a", zIndex: 100 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, letterSpacing: 3, color: "#fff" }}>YEAR ZERO</span>
           <span style={{ background: "#00FF8812", border: "1px solid #00FF8830", borderRadius: 6, padding: "3px 9px", fontSize: 10, color: "#00FF88", letterSpacing: 2 }}>Q{currentQ}</span>
           <button onClick={() => setShowHistory(true)} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#555", letterSpacing: 1 }}>
             HISTORY {pastWeeks > 0 ? `· ${pastWeeks}wk` : ""}
+          </button>
+          <button onClick={() => setEditMode(e => !e)} style={{ background: editMode ? "#FF6B3522" : "#181818", border: `1px solid ${editMode ? "#FF6B3566" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: editMode ? "#FF6B35" : "#555", letterSpacing: 1 }}>
+            {editMode ? "✓ DONE EDITING" : "✏ EDIT"}
           </button>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -409,7 +592,7 @@ export default function App() {
         })}
       </div>
 
-      {/* Year progress bar */}
+      {/* Year progress */}
       <div style={{ padding: "10px 20px 0", display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 8, color: "#333", letterSpacing: 2, flexShrink: 0 }}>WK {weekNum}/52</span>
         <div style={{ flex: 1, height: 3, background: "#1a1a1a", borderRadius: 2, overflow: "hidden" }}>
@@ -420,8 +603,11 @@ export default function App() {
 
       {/* Goal cards */}
       <div style={{ padding: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
-        {Object.keys(SECTIONS).map(key => (
-          <GoalCard key={key} sectionKey={key} checks={checks[key]} onCheck={handleCheck} actuals={actuals[key]} onSave={handleSave} />
+        {Object.keys(sections).map(key => (
+          <GoalCard key={key} sectionKey={key} section={sections[key]}
+            checks={checks[key] || []} onCheck={handleCheck}
+            actuals={actuals[key] || []} onSave={handleSave}
+            editMode={editMode} onUpdateSection={handleUpdateSection} />
         ))}
       </div>
 
@@ -449,7 +635,7 @@ export default function App() {
       <div style={{ borderTop: "1px solid #1a1a1a", padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontSize: 9, color: "#222", letterSpacing: 1 }}>YEAR ZERO · INPUT-BASED SYSTEM · DATA SAVED LOCALLY</span>
         <div style={{ display: "flex", gap: 14 }}>
-          {Object.values(SECTIONS).map(s => (
+          {Object.values(sections).map(s => (
             <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <span style={{ color: s.color, fontSize: 9 }}>{s.icon}</span>
               <span style={{ fontSize: 9, color: "#333" }}>{s.label}</span>
