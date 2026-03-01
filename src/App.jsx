@@ -371,7 +371,7 @@ function GoalCard({sectionKey,section,checks,onCheck,actuals,onSave,editMode,onU
 }
 
 // ─── Schedule Section (editable hours + weekly goals strip) ──────────────────
-function ScheduleSection({sched,onUpdate,editMode,weeklyGoals,onUpdateGoals}){
+function ScheduleSection({sched,onUpdate,editMode,weeklyGoals,onUpdateGoals,onAddWeeklyTarget}){
   const [addingTo,setAddingTo]=useState(null);
   const [newBlock,setNewBlock]=useState("");
   const [editingHours,setEditingHours]=useState(null); // dayId being edited
@@ -380,6 +380,7 @@ function ScheduleSection({sched,onUpdate,editMode,weeklyGoals,onUpdateGoals}){
   const [goalVal,setGoalVal]=useState("");
   const [addingGoal,setAddingGoal]=useState(false);
   const [newGoal,setNewGoal]=useState("");
+  const [newGoalCat,setNewGoalCat]=useState("business");
 
   const deleteBlock=(dayId,blockId)=>{
     onUpdate(sched.map(d=>d.id===dayId?{...d,blocks:d.blocks.filter(b=>b.id!==blockId)}:d));
@@ -402,8 +403,9 @@ function ScheduleSection({sched,onUpdate,editMode,weeklyGoals,onUpdateGoals}){
   const deleteGoal=(idx)=>onUpdateGoals(weeklyGoals.filter((_,i)=>i!==idx));
   const addGoal=()=>{
     if(!newGoal.trim())return;
-    onUpdateGoals([...weeklyGoals,newGoal.trim()]);
-    setNewGoal("");setAddingGoal(false);
+    onUpdateGoals([...weeklyGoals,{text:newGoal.trim(),cat:newGoalCat}]);
+    if(onAddWeeklyTarget) onAddWeeklyTarget(newGoalCat,newGoal.trim());
+    setNewGoal("");setNewGoalCat("business");setAddingGoal(false);
   };
 
   return(
@@ -421,32 +423,46 @@ function ScheduleSection({sched,onUpdate,editMode,weeklyGoals,onUpdateGoals}){
         <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
           {weeklyGoals.map((g,i)=>(
             <div key={i} style={{display:"flex",alignItems:"center",gap:6}}>
-              {editMode&&editingGoal===i?(
-                <div style={{display:"flex",gap:5}}>
-                  <input value={goalVal} onChange={e=>setGoalVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveGoal(i)} autoFocus
-                    style={{background:"#1a1a1a",border:"1px solid #00FF8844",borderRadius:6,padding:"4px 8px",color:"#fff",fontSize:11,outline:"none",fontFamily:"inherit",width:160}}/>
-                  <button onClick={()=>saveGoal(i)} style={{padding:"4px 8px",borderRadius:6,background:"#00FF8820",border:"1px solid #00FF8844",color:"#00FF88",fontSize:10,cursor:"pointer"}}>✓</button>
-                  <button onClick={()=>{setEditingGoal(null);setGoalVal("");}} style={{padding:"4px 8px",borderRadius:6,background:"transparent",border:"1px solid #2a2a2a",color:"#555",fontSize:10,cursor:"pointer"}}>✕</button>
-                </div>
-              ):(
-                <div style={{display:"flex",alignItems:"center",gap:5,background:"#181818",border:"1px solid #252525",borderRadius:8,padding:"5px 10px"}}>
-                  <span style={{fontSize:9,color:"#00FF88"}}>◈</span>
-                  <span style={{fontSize:11,color:"#bbb"}}>{g}</span>
-                  {editMode&&<>
-                    <button onClick={()=>{setEditingGoal(i);setGoalVal(g);}} style={{width:14,height:14,background:"none",border:"none",color:"#444",fontSize:10,cursor:"pointer",padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>✏</button>
-                    <button onClick={()=>deleteGoal(i)} style={{width:14,height:14,background:"none",border:"none",color:"#444",fontSize:13,cursor:"pointer",padding:0,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
-                  </>}
-                </div>
-              )}
+              {(()=>{
+                const gText=typeof g==="string"?g:g.text;
+                const gCat=typeof g==="string"?"business":g.cat||"business";
+                const catColors={business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA"};
+                const catIcons={business:"◈",fatLoss:"◉",savings:"◆",social:"◍"};
+                const chipColor=catColors[gCat]||"#00FF88";
+                return editMode&&editingGoal===i?(
+                  <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                    <input value={goalVal} onChange={e=>setGoalVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveGoal(i)} autoFocus
+                      style={{background:"#1a1a1a",border:`1px solid ${chipColor}44`,borderRadius:6,padding:"4px 8px",color:"#fff",fontSize:11,outline:"none",fontFamily:"inherit",width:160}}/>
+                    <button onClick={()=>saveGoal(i)} style={{padding:"4px 8px",borderRadius:6,background:chipColor+"20",border:`1px solid ${chipColor}44`,color:chipColor,fontSize:10,cursor:"pointer"}}>✓</button>
+                    <button onClick={()=>{setEditingGoal(null);setGoalVal("");}} style={{padding:"4px 8px",borderRadius:6,background:"transparent",border:"1px solid #2a2a2a",color:"#555",fontSize:10,cursor:"pointer"}}>✕</button>
+                  </div>
+                ):(
+                  <div style={{display:"flex",alignItems:"center",gap:5,background:"#181818",border:`1px solid ${chipColor}33`,borderRadius:8,padding:"5px 10px"}}>
+                    <span style={{fontSize:9,color:chipColor}}>{catIcons[gCat]||"◈"}</span>
+                    <span style={{fontSize:11,color:"#bbb"}}>{gText}</span>
+                    {editMode&&<>
+                      <button onClick={()=>{setEditingGoal(i);setGoalVal(gText);}} style={{width:14,height:14,background:"none",border:"none",color:"#444",fontSize:10,cursor:"pointer",padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>✏</button>
+                      <button onClick={()=>deleteGoal(i)} style={{width:14,height:14,background:"none",border:"none",color:"#444",fontSize:13,cursor:"pointer",padding:0,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
+                    </>}
+                  </div>
+                );
+              })()}
             </div>
           ))}
           {weeklyGoals.length===0&&!editMode&&<span style={{fontSize:10,color:"#333"}}>No weekly goals set — turn on Edit Mode to add some</span>}
           {addingGoal&&(
-            <div style={{display:"flex",gap:5}}>
-              <input value={newGoal} onChange={e=>setNewGoal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addGoal()} placeholder="e.g. Hit £500 revenue" autoFocus
-                style={{background:"#1a1a1a",border:"1px solid #00FF8844",borderRadius:6,padding:"4px 10px",color:"#fff",fontSize:11,outline:"none",fontFamily:"inherit",width:190}}/>
-              <button onClick={addGoal} style={{padding:"4px 10px",borderRadius:6,background:"#00FF8820",border:"1px solid #00FF8844",color:"#00FF88",fontSize:10,cursor:"pointer"}}>+</button>
-              <button onClick={()=>{setAddingGoal(false);setNewGoal("");}} style={{padding:"4px 8px",borderRadius:6,background:"transparent",border:"1px solid #2a2a2a",color:"#555",fontSize:10,cursor:"pointer"}}>✕</button>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",background:"#181818",border:"1px solid #2a2a2a",borderRadius:10,padding:"10px 12px",width:"100%"}}>
+              <input value={newGoal} onChange={e=>setNewGoal(e.target.value)} placeholder="e.g. Hit £500 revenue" autoFocus
+                style={{flex:1,minWidth:140,background:"#1a1a1a",border:"1px solid #00FF8844",borderRadius:6,padding:"6px 10px",color:"#fff",fontSize:11,outline:"none",fontFamily:"inherit"}}/>
+              <select value={newGoalCat} onChange={e=>setNewGoalCat(e.target.value)}
+                style={{background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:6,padding:"6px 8px",color:"#888",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>
+                <option value="business">◈ Business</option>
+                <option value="fatLoss">◉ Fat Loss</option>
+                <option value="savings">◆ Savings</option>
+                <option value="social">◍ Social</option>
+              </select>
+              <button onClick={addGoal} style={{padding:"6px 12px",borderRadius:6,background:"#00FF8820",border:"1px solid #00FF8844",color:"#00FF88",fontSize:10,cursor:"pointer",letterSpacing:1}}>ADD</button>
+              <button onClick={()=>{setAddingGoal(false);setNewGoal("");setNewGoalCat("business");}} style={{padding:"6px 8px",borderRadius:6,background:"transparent",border:"1px solid #2a2a2a",color:"#555",fontSize:10,cursor:"pointer"}}>✕</button>
             </div>
           )}
         </div>
@@ -976,6 +992,13 @@ export default function App(){
   const handleCheckinSave=(data)=>{const newCi={...checkins,[WEEK_KEY]:data};setCheckins(newCi);ls.set("yz-checkins",newCi);setShowCheckin(false);flash();};
   const handleMilestones=(ms)=>{setMilestones(ms);ls.set('yz-milestones',ms);flash();};
   const handleWeeklyGoals=(goals)=>{setWeeklyGoals(goals);ls.set('yz-weekly-goals',goals);flash();};
+  const handleAddWeeklyTarget=(secKey,label)=>{
+    // Add as a weekly target in the matching section
+    const sec=sections[secKey];
+    if(!sec)return;
+    const newTarget={label,min:0,max:1,target:1,unit:"done",suffix:"/ 1",type:"check",key:uid()};
+    handleUpdateSection(secKey,{...sec,weekly:[...sec.weekly,newTarget]});
+  };
 
   const allDaily=Object.keys(sections).flatMap(k=>(checks[k]||[]));
   const dailyDone=allDaily.filter(Boolean).length;
@@ -1194,36 +1217,14 @@ export default function App(){
               );
             })()}
             {isFuture&&(
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
-                {Object.keys(sections).map(sec=>{
-                  const s=sections[sec]; const color=COLORS[sec];
-                  return(
-                    <div key={sec} style={{background:"#111",border:`1px solid ${color}15`,borderRadius:16,padding:20,opacity:0.75}}>
-                      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4}}>
-                        <span style={{color,fontSize:16}}>{s.icon}</span>
-                        <span style={{color,fontSize:10,letterSpacing:2}}>{s.label.toUpperCase()}</span>
-                      </div>
-                      <div style={{color:"#fff",fontFamily:"'Bebas Neue',cursive",fontSize:18,letterSpacing:1,marginBottom:14}}>{s.goal}</div>
-                      <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:6}}>TARGET FOR WK {offWkNum}</div>
-                      <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,color,letterSpacing:1,marginBottom:14}}>{GOAL_META[sec].format(Math.round(TRAJECTORIES[sec](offWkNum)))}</div>
-                      <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:6}}>DAILY PLAN</div>
-                      {s.daily.map((item,ii)=>(
-                        <div key={ii} style={{display:"flex",alignItems:"center",gap:8,padding:"3px 0"}}>
-                          <span style={{width:16,height:16,borderRadius:3,border:"1.5px solid #2a2a2a",flexShrink:0}}/>
-                          <span style={{fontSize:12,color:"#555"}}>{item.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
+              <FutureWeekCards sections={sections} offWkNum={offWkNum} offKey={offKey} history={history} persist={persist} checks={checks} actuals={actuals} COLORS={COLORS}/>
             )}
           </div>
         );
       })()}
 
       {/* Schedule */}
-      <ScheduleSection sched={sched} onUpdate={handleUpdateSched} editMode={editMode} weeklyGoals={weeklyGoals} onUpdateGoals={handleWeeklyGoals}/>
+      <ScheduleSection sched={sched} onUpdate={handleUpdateSched} editMode={editMode} weeklyGoals={weeklyGoals} onUpdateGoals={handleWeeklyGoals} onAddWeeklyTarget={handleAddWeeklyTarget}/>
 
       {/* Milestones */}
       <MilestoneSection milestones={milestones} onUpdate={handleMilestones}/>
@@ -1592,5 +1593,115 @@ function WeekReviewPage({history,checkins,sections,onBack,currentWeekNum,current
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Future Week Cards (interactive — plan ahead) ─────────────────────────────
+function FutureWeekCards({sections,offWkNum,offKey,history,persist,checks,actuals,COLORS}){
+  // Load or init future week data from history store
+  const [fChecks,setFChecks]=useState(()=>{
+    const d=history[offKey]; return d?.checks||emptyChecks(sections);
+  });
+  const [fActuals,setFActuals]=useState(()=>{
+    const d=history[offKey]; return d?.actuals||emptyActuals(sections);
+  });
+  const [modal,setModal]=useState(null); // {sec, idx}
+
+  const saveF=(nc,na)=>{
+    const wd={checks:nc,actuals:na,savedAt:Date.now(),sectionSnapshot:sections,isFuturePlan:true};
+    const ls2={get(k){try{return JSON.parse(localStorage.getItem(k));}catch{return null;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}};
+    ls2.set(offKey,wd);
+    // also update history in memory via persist pattern
+    const hist=ls2.get("yz-history")||{};
+    hist[offKey]=wd;
+    ls2.set("yz-history",hist);
+  };
+
+  const toggleCheck=(sec,idx)=>{
+    const nc={...fChecks,[sec]:fChecks[sec].map((v,i)=>i===idx?!v:v)};
+    setFChecks(nc); saveF(nc,fActuals);
+  };
+  const saveActual=(sec,idx,val)=>{
+    const na={...fActuals,[sec]:fActuals[sec].map((v,i)=>i===idx?val:v)};
+    setFActuals(na); saveF(fChecks,na); setModal(null);
+  };
+
+  return(
+    <>
+      {modal&&(
+        <InputModal
+          item={{...sections[modal.sec].weekly[modal.idx],actual:fActuals[modal.sec]?.[modal.idx]??0}}
+          color={COLORS[modal.sec]}
+          onSave={v=>saveActual(modal.sec,modal.idx,v)}
+          onClose={()=>setModal(null)}
+        />
+      )}
+      <div style={{background:"#6BA3FF15",border:"1px solid #6BA3FF22",borderRadius:10,padding:"8px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:9,color:"#6BA3FF",letterSpacing:2}}>📅 PLANNING WEEK {offWkNum}</span>
+        <span style={{fontSize:10,color:"#555"}}>Tick tasks and set targets for this upcoming week</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
+        {Object.keys(sections).map(sec=>{
+          const s=sections[sec]; const color=COLORS[sec];
+          const fChk=fChecks[sec]||[]; const fAct=fActuals[sec]||[];
+          const dd=fChk.filter(Boolean).length;
+          const wh=s.weekly.filter((w,ii)=>{const v=fAct[ii];return v!==null&&v!==undefined&&v>=w.target;}).length;
+          const pct=(s.daily.length+s.weekly.length)>0?Math.round(((dd+wh)/(s.daily.length+s.weekly.length))*100):0;
+          return(
+            <div key={sec} style={{background:"#111",border:`1px solid ${color}20`,borderRadius:16,padding:20,position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",top:-30,right:-30,width:120,height:120,borderRadius:"50%",background:`radial-gradient(circle,${color}07 0%,transparent 70%)`,pointerEvents:"none"}}/>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
+                <div>
+                  <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3}}>
+                    <span style={{color,fontSize:16}}>{s.icon}</span>
+                    <span style={{color,fontSize:10,letterSpacing:2}}>{s.label.toUpperCase()}</span>
+                  </div>
+                  <div style={{color:"#fff",fontFamily:"'Bebas Neue',cursive",fontSize:18,letterSpacing:1}}>{s.goal}</div>
+                  <div style={{fontSize:9,color:"#444",marginTop:2}}>Target wk {offWkNum}: {GOAL_META[sec].format(Math.round(TRAJECTORIES[sec](offWkNum)))}</div>
+                </div>
+                <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <Ring pct={pct} color={color} size={56}/>
+                  <span style={{position:"absolute",fontFamily:"'Bebas Neue',cursive",fontSize:12,color:"#fff"}}>{pct}%</span>
+                </div>
+              </div>
+              {/* Daily — fully interactive */}
+              <div style={{borderTop:"1px solid #1e1e1e",paddingTop:12,marginBottom:12}}>
+                <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:6}}>DAILY NON-NEGOTIABLES</div>
+                {s.daily.map((item,ii)=>(
+                  <CheckRow key={item.key} label={`${item.label} · ${item.unit}`} done={fChk[ii]||false} color={color} onToggle={()=>toggleCheck(sec,ii)} editMode={false} onDelete={()=>{}}/>
+                ))}
+              </div>
+              {/* Weekly — tappable with modal */}
+              <div style={{borderTop:"1px solid #1e1e1e",paddingTop:12}}>
+                <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:8}}>WEEKLY TARGETS <span style={{color:"#2a2a2a"}}>· tap to plan</span></div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                  {s.weekly.map((w,ii)=>{
+                    const val=fAct[ii]; const hasVal=val!==null&&val!==undefined; const hit=hasVal&&val>=w.target;
+                    const dc=hit?"#00FF88":color;
+                    return(
+                      <button key={w.key} onClick={()=>setModal({sec,idx:ii})}
+                        style={{position:"relative",overflow:"hidden",background:hasVal?color+"08":"#181818",borderRadius:10,padding:"10px 12px",border:`1px solid ${hasVal?color+"40":"#242424"}`,cursor:"pointer",textAlign:"left"}}>
+                        {hasVal&&<div style={{position:"absolute",inset:0,width:`${Math.min(Math.round((val/w.target)*100),100)}%`,background:`linear-gradient(90deg,${color}14,transparent)`,pointerEvents:"none"}}/>}
+                        <div style={{position:"relative"}}>
+                          <div style={{fontSize:10,color:"#555",marginBottom:3}}>{w.label}</div>
+                          {hasVal?(
+                            <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:18,color:dc,letterSpacing:1}}>
+                              {w.type==="check"?(val===1?"✓ DONE":"✗"):val}
+                              {w.type!=="check"&&<span style={{fontSize:8,color:"#444",marginLeft:4}}>{w.suffix}</span>}
+                            </div>
+                          ):(
+                            <div style={{fontSize:10,color:"#333"}}>tap to plan {w.suffix}</div>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
