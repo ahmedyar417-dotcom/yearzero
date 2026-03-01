@@ -130,7 +130,7 @@ function getMsAuthUrl(clientId, redirectUri) {
     scope: MS_SCOPES,
     response_mode: "fragment",
   });
-  return `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params}`;
+  return `https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?${params}`;
 }
 
 function parseMsToken() {
