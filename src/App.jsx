@@ -126,7 +126,7 @@ function getMsAuthUrl(clientId, redirectUri) {
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "token",
-    redirect_uri: redirectUri,
+    redirect_uri: redirectUri.endsWith("/") ? redirectUri : redirectUri + "/",
     scope: MS_SCOPES,
     response_mode: "fragment",
   });
