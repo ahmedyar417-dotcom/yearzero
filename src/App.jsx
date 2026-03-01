@@ -370,10 +370,16 @@ function GoalCard({sectionKey,section,checks,onCheck,actuals,onSave,editMode,onU
   );
 }
 
-// ─── Schedule Section (editable) ─────────────────────────────────────────────
-function ScheduleSection({sched,onUpdate,editMode}){
+// ─── Schedule Section (editable hours + weekly goals strip) ──────────────────
+function ScheduleSection({sched,onUpdate,editMode,weeklyGoals,onUpdateGoals}){
   const [addingTo,setAddingTo]=useState(null);
   const [newBlock,setNewBlock]=useState("");
+  const [editingHours,setEditingHours]=useState(null); // dayId being edited
+  const [hoursVal,setHoursVal]=useState("");
+  const [editingGoal,setEditingGoal]=useState(null);
+  const [goalVal,setGoalVal]=useState("");
+  const [addingGoal,setAddingGoal]=useState(false);
+  const [newGoal,setNewGoal]=useState("");
 
   const deleteBlock=(dayId,blockId)=>{
     onUpdate(sched.map(d=>d.id===dayId?{...d,blocks:d.blocks.filter(b=>b.id!==blockId)}:d));
@@ -383,17 +389,87 @@ function ScheduleSection({sched,onUpdate,editMode}){
     onUpdate(sched.map(d=>d.id===dayId?{...d,blocks:[...d.blocks,{id:uid(),text:newBlock.trim()}]}:d));
     setNewBlock("");setAddingTo(null);
   };
+  const saveHours=(dayId)=>{
+    if(!hoursVal.trim())return;
+    onUpdate(sched.map(d=>d.id===dayId?{...d,sub:hoursVal.trim()}:d));
+    setEditingHours(null);setHoursVal("");
+  };
+  const saveGoal=(idx)=>{
+    if(!goalVal.trim())return;
+    const ng=[...weeklyGoals];ng[idx]=goalVal.trim();
+    onUpdateGoals(ng);setEditingGoal(null);setGoalVal("");
+  };
+  const deleteGoal=(idx)=>onUpdateGoals(weeklyGoals.filter((_,i)=>i!==idx));
+  const addGoal=()=>{
+    if(!newGoal.trim())return;
+    onUpdateGoals([...weeklyGoals,newGoal.trim()]);
+    setNewGoal("");setAddingGoal(false);
+  };
 
   return(
     <div style={{padding:"0 20px 24px"}}>
       <div style={{borderTop:"1px solid #1a1a1a",paddingTop:18,marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <span style={{fontSize:9,color:"#444",letterSpacing:2}}>WEEKLY SCHEDULE TEMPLATE</span>
       </div>
+
+      {/* Weekly goals strip — spans full width above 3 columns */}
+      <div style={{background:"#111",border:"1px solid #1e1e1e",borderRadius:12,padding:"12px 16px",marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <span style={{fontSize:9,color:"#444",letterSpacing:2}}>WEEKLY GOALS</span>
+          {editMode&&<button onClick={()=>setAddingGoal(a=>!a)} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #00FF8844",background:"#00FF8810",color:"#00FF88",fontSize:9,cursor:"pointer",letterSpacing:1}}>+ ADD</button>}
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
+          {weeklyGoals.map((g,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:6}}>
+              {editMode&&editingGoal===i?(
+                <div style={{display:"flex",gap:5}}>
+                  <input value={goalVal} onChange={e=>setGoalVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveGoal(i)} autoFocus
+                    style={{background:"#1a1a1a",border:"1px solid #00FF8844",borderRadius:6,padding:"4px 8px",color:"#fff",fontSize:11,outline:"none",fontFamily:"inherit",width:160}}/>
+                  <button onClick={()=>saveGoal(i)} style={{padding:"4px 8px",borderRadius:6,background:"#00FF8820",border:"1px solid #00FF8844",color:"#00FF88",fontSize:10,cursor:"pointer"}}>✓</button>
+                  <button onClick={()=>{setEditingGoal(null);setGoalVal("");}} style={{padding:"4px 8px",borderRadius:6,background:"transparent",border:"1px solid #2a2a2a",color:"#555",fontSize:10,cursor:"pointer"}}>✕</button>
+                </div>
+              ):(
+                <div style={{display:"flex",alignItems:"center",gap:5,background:"#181818",border:"1px solid #252525",borderRadius:8,padding:"5px 10px"}}>
+                  <span style={{fontSize:9,color:"#00FF88"}}>◈</span>
+                  <span style={{fontSize:11,color:"#bbb"}}>{g}</span>
+                  {editMode&&<>
+                    <button onClick={()=>{setEditingGoal(i);setGoalVal(g);}} style={{width:14,height:14,background:"none",border:"none",color:"#444",fontSize:10,cursor:"pointer",padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>✏</button>
+                    <button onClick={()=>deleteGoal(i)} style={{width:14,height:14,background:"none",border:"none",color:"#444",fontSize:13,cursor:"pointer",padding:0,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
+                  </>}
+                </div>
+              )}
+            </div>
+          ))}
+          {weeklyGoals.length===0&&!editMode&&<span style={{fontSize:10,color:"#333"}}>No weekly goals set — turn on Edit Mode to add some</span>}
+          {addingGoal&&(
+            <div style={{display:"flex",gap:5}}>
+              <input value={newGoal} onChange={e=>setNewGoal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addGoal()} placeholder="e.g. Hit £500 revenue" autoFocus
+                style={{background:"#1a1a1a",border:"1px solid #00FF8844",borderRadius:6,padding:"4px 10px",color:"#fff",fontSize:11,outline:"none",fontFamily:"inherit",width:190}}/>
+              <button onClick={addGoal} style={{padding:"4px 10px",borderRadius:6,background:"#00FF8820",border:"1px solid #00FF8844",color:"#00FF88",fontSize:10,cursor:"pointer"}}>+</button>
+              <button onClick={()=>{setAddingGoal(false);setNewGoal("");}} style={{padding:"4px 8px",borderRadius:6,background:"transparent",border:"1px solid #2a2a2a",color:"#555",fontSize:10,cursor:"pointer"}}>✕</button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Day columns */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
         {sched.map(day=>(
           <div key={day.id} style={{background:"#111",border:`1px solid ${editMode?day.color+"44":day.color+"20"}`,borderRadius:12,padding:16}}>
             <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:18,color:day.color,letterSpacing:2}}>{day.label}</div>
-            <div style={{fontSize:9,color:"#444",letterSpacing:1,marginBottom:10}}>{day.sub}</div>
+            {/* Editable hours/sub */}
+            {editMode&&editingHours===day.id?(
+              <div style={{display:"flex",gap:5,marginBottom:10}}>
+                <input value={hoursVal} onChange={e=>setHoursVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveHours(day.id)} autoFocus placeholder={day.sub}
+                  style={{flex:1,background:"#1a1a1a",border:`1px solid ${day.color}44`,borderRadius:6,padding:"4px 8px",color:"#fff",fontSize:10,outline:"none",fontFamily:"inherit"}}/>
+                <button onClick={()=>saveHours(day.id)} style={{padding:"4px 8px",borderRadius:6,background:day.color+"20",border:`1px solid ${day.color}44`,color:day.color,fontSize:10,cursor:"pointer"}}>✓</button>
+                <button onClick={()=>{setEditingHours(null);setHoursVal("");}} style={{padding:"4px 6px",borderRadius:6,background:"transparent",border:"1px solid #2a2a2a",color:"#555",fontSize:10,cursor:"pointer"}}>✕</button>
+              </div>
+            ):(
+              <div onClick={()=>{if(editMode){setEditingHours(day.id);setHoursVal(day.sub);}}} style={{fontSize:9,color:editMode?"#666":"#444",letterSpacing:1,marginBottom:10,cursor:editMode?"pointer":"default",display:"flex",alignItems:"center",gap:5}}>
+                {day.sub}{editMode&&<span style={{fontSize:8,color:"#333"}}>✏</span>}
+              </div>
+            )}
             {day.blocks.map(b=>(
               <div key={b.id} style={{display:"flex",gap:6,marginBottom:6,alignItems:"flex-start"}}>
                 {editMode&&<button onClick={()=>deleteBlock(day.id,b.id)} style={{width:16,height:16,borderRadius:"50%",background:"#FF6B3522",border:"1px solid #FF6B3566",color:"#FF6B35",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1,marginTop:2}}>×</button>}
@@ -841,17 +917,32 @@ export default function App(){
   const dayLabel=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][today.getDay()];
   const WEEK_KEY=getWeekKey();
 
+  // Helper to get week key for an offset from current week
+  const getOffsetWeekKey=(offset)=>{
+    const d=new Date(); d.setHours(0,0,0,0);
+    d.setDate(d.getDate()-((d.getDay()+6)%7)+offset*7);
+    return `yz-week-${d.toISOString().slice(0,10)}`;
+  };
+  const getOffsetWeekNum=(offset)=>{
+    const d=new Date(); d.setDate(d.getDate()+offset*7);
+    const s=new Date(d.getFullYear(),0,1);
+    return Math.ceil(((d-s)/86400000+1)/7);
+  };
+
   const [sections,setSections]=useState(()=>ls.get("yz-sections")||DEFAULT_SECTIONS);
   const [checks,setChecks]=useState(()=>emptyChecks(ls.get("yz-sections")||DEFAULT_SECTIONS));
   const [actuals,setActuals]=useState(()=>emptyActuals(ls.get("yz-sections")||DEFAULT_SECTIONS));
   const [sched,setSched]=useState(()=>ls.get("yz-sched")||DEFAULT_SCHED);
   const [history,setHistory]=useState({});
   const [checkins,setCheckins]=useState({});
+  const [milestones,setMilestones]=useState(()=>ls.get('yz-milestones')||[]);
+  const [weeklyGoals,setWeeklyGoals]=useState(()=>ls.get('yz-weekly-goals')||[]);
   const [saveFlash,setSaveFlash]=useState(false);
   const [showHistory,setShowHistory]=useState(false);
   const [editMode,setEditMode]=useState(false);
   const [page,setPage]=useState("dashboard");
   const [showCheckin,setShowCheckin]=useState(false);
+  const [viewWeekOffset,setViewWeekOffset]=useState(0); // 0=current, -1=last week, +1=next week
 
   useEffect(()=>{
     const wd=ls.get(WEEK_KEY);
@@ -883,6 +974,8 @@ export default function App(){
   };
   const handleUpdateSched=(newSched)=>{setSched(newSched);ls.set("yz-sched",newSched);flash();};
   const handleCheckinSave=(data)=>{const newCi={...checkins,[WEEK_KEY]:data};setCheckins(newCi);ls.set("yz-checkins",newCi);setShowCheckin(false);flash();};
+  const handleMilestones=(ms)=>{setMilestones(ms);ls.set('yz-milestones',ms);flash();};
+  const handleWeeklyGoals=(goals)=>{setWeeklyGoals(goals);ls.set('yz-weekly-goals',goals);flash();};
 
   const allDaily=Object.keys(sections).flatMap(k=>(checks[k]||[]));
   const dailyDone=allDaily.filter(Boolean).length;
@@ -923,18 +1016,23 @@ export default function App(){
           <button onClick={()=>setShowCheckin(true)} style={{background:checkinDone?"#00FF8812":"#181818",border:`1px solid ${checkinDone?"#00FF8833":"#252525"}`,borderRadius:7,padding:"4px 11px",cursor:"pointer",fontSize:10,color:checkinDone?"#00FF88":"#555",letterSpacing:1}}>{checkinDone?"✓ CHECKED IN":"CHECK IN"}</button>
           <button onClick={()=>setEditMode(e=>!e)} style={{background:editMode?"#FF6B3522":"#181818",border:`1px solid ${editMode?"#FF6B3566":"#252525"}`,borderRadius:7,padding:"4px 11px",cursor:"pointer",fontSize:10,color:editMode?"#FF6B35":"#555",letterSpacing:1}}>{editMode?"✓ DONE EDITING":"✏ EDIT"}</button>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:16}}>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:8,color:"#444",letterSpacing:2}}>TODAY</div>
-            <div style={{fontSize:11,color:"#aaa"}}>{dayLabel.toUpperCase()} · WK {weekNum}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {/* Week navigator */}
+          <button onClick={()=>setViewWeekOffset(o=>o-1)} style={{width:28,height:28,borderRadius:7,border:"1px solid #252525",background:"#181818",color:"#888",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>‹</button>
+          <div style={{textAlign:"center",minWidth:90}}>
+            <div style={{fontSize:8,color:viewWeekOffset===0?"#00FF88":"#555",letterSpacing:2}}>{viewWeekOffset===0?"THIS WEEK":viewWeekOffset<0?`${Math.abs(viewWeekOffset)}WK AGO`:`${viewWeekOffset}WK AHEAD`}</div>
+            <div style={{fontSize:11,color:viewWeekOffset===0?"#fff":"#888",letterSpacing:0.5}}>{dayLabel.toUpperCase()} · WK {getOffsetWeekNum(viewWeekOffset)}</div>
+            {viewWeekOffset!==0&&<button onClick={()=>setViewWeekOffset(0)} style={{fontSize:8,color:"#00FF88",background:"none",border:"none",cursor:"pointer",letterSpacing:1,padding:0}}>← NOW</button>}
           </div>
+          <button onClick={()=>setViewWeekOffset(o=>o+1)} style={{width:28,height:28,borderRadius:7,border:"1px solid #252525",background:"#181818",color:"#888",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>›</button>
+          <div style={{width:1,height:32,background:"#1e1e1e",margin:"0 4px"}}/>
           <div style={{textAlign:"center"}}>
             <div style={{fontSize:8,color:"#444",letterSpacing:2}}>DAILY</div>
-            <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:20,color:topColor,letterSpacing:1}}>{dailyPct}%</div>
+            <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:20,color:viewWeekOffset===0?topColor:"#555",letterSpacing:1}}>{viewWeekOffset===0?dailyPct+"%":"—"}</div>
           </div>
           <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <Ring pct={dailyPct} color={topColor} size={42}/>
-            <span style={{position:"absolute",fontSize:8,color:"#fff",fontWeight:700}}>{dailyDone}/{allDaily.length}</span>
+            <Ring pct={viewWeekOffset===0?dailyPct:0} color={viewWeekOffset===0?topColor:"#333"} size={42}/>
+            <span style={{position:"absolute",fontSize:8,color:"#fff",fontWeight:700}}>{viewWeekOffset===0?`${dailyDone}/${allDaily.length}`:"—"}</span>
           </div>
         </div>
       </div>
@@ -965,18 +1063,170 @@ export default function App(){
         <span style={{fontSize:8,color:"#333",letterSpacing:1,flexShrink:0}}>{Math.round((weekNum/52)*100)}%</span>
       </div>
 
-      {/* Goal cards */}
-      <div style={{padding:20,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
-        {Object.keys(sections).map(key=>(
-          <GoalCard key={key} sectionKey={key} section={sections[key]}
-            checks={checks[key]||[]} onCheck={handleCheck}
-            actuals={actuals[key]||[]} onSave={handleSave}
-            editMode={editMode} onUpdateSection={handleUpdateSection}/>
-        ))}
-      </div>
+      {/* Goal cards — show current week live, or past/future week read-only */}
+      {(()=>{
+        if(viewWeekOffset===0){
+          return(
+            <div style={{padding:20,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
+              {Object.keys(sections).map(key=>(
+                <GoalCard key={key} sectionKey={key} section={sections[key]}
+                  checks={checks[key]||[]} onCheck={handleCheck}
+                  actuals={actuals[key]||[]} onSave={handleSave}
+                  editMode={editMode} onUpdateSection={handleUpdateSection}/>
+              ))}
+            </div>
+          );
+        }
+        // Past or future week — read-only view
+        const offKey=getOffsetWeekKey(viewWeekOffset);
+        const offWkNum=getOffsetWeekNum(viewWeekOffset);
+        const offData=history[offKey];
+        const COLORS={business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA"};
+        const isFuture=viewWeekOffset>0;
+        if(!offData&&!isFuture){
+          return(
+            <div style={{padding:20}}>
+              <div style={{background:"#111",border:"1px solid #1e1e1e",borderRadius:14,padding:32,textAlign:"center"}}>
+                <div style={{fontSize:32,marginBottom:10}}>—</div>
+                <div style={{fontSize:12,color:"#444",marginBottom:4}}>No data recorded for Week {offWkNum}</div>
+                <div style={{fontSize:10,color:"#2a2a2a"}}>Keep logging from the current week to build your history</div>
+              </div>
+            </div>
+          );
+        }
+        return(
+          <div style={{padding:20}}>
+            {!isFuture&&offData&&(()=>{
+              const sectionKeys=Object.keys(sections);
+              const pcts=sectionKeys.map(sec=>{
+                const c=offData.checks?.[sec]||[]; const a=offData.actuals?.[sec]||[];
+                const snap=offData.sectionSnapshot?.[sec]||sections[sec]||DEFAULT_SECTIONS[sec];
+                const total=(snap?.daily?.length||4)+(snap?.weekly?.length||4);
+                const done=c.filter(Boolean).length+(snap?.weekly||[]).filter((w,ii)=>{const v=a[ii];return v!==null&&v!==undefined&&v>=w.target;}).length;
+                return total>0?Math.round((done/total)*100):0;
+              });
+              const overall=Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length);
+              const oc=overall>=75?"#00FF88":overall>=50?"#FFD700":"#FF6B35";
+              return(
+                <>
+                  {/* Overall score banner */}
+                  <div style={{background:"#111",border:`1px solid ${oc}22`,borderRadius:14,padding:"16px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:20}}>
+                    <div>
+                      <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:2}}>WEEK {offWkNum} SCORE</div>
+                      <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:52,color:oc,letterSpacing:2,lineHeight:1,filter:`drop-shadow(0 0 10px ${oc}44)`}}>{overall}%</div>
+                    </div>
+                    <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                      {sectionKeys.map((sec,si)=>{
+                        const p=pcts[si]; const c=COLORS[sec];
+                        return(
+                          <div key={sec}>
+                            <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                              <span style={{fontSize:9,color:c,letterSpacing:1}}>{sections[sec]?.label||sec}</span>
+                              <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:12,color:c}}>{p}%</span>
+                            </div>
+                            <div style={{height:3,background:"#1a1a1a",borderRadius:2,overflow:"hidden"}}>
+                              <div style={{height:"100%",width:`${p}%`,background:c}}/>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {/* Per-section cards */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
+                    {sectionKeys.map(sec=>{
+                      const snap=offData.sectionSnapshot?.[sec]||sections[sec]||DEFAULT_SECTIONS[sec];
+                      const chks=offData.checks?.[sec]||[];
+                      const acts=offData.actuals?.[sec]||[];
+                      const color=COLORS[sec];
+                      const dd=chks.filter(Boolean).length;
+                      const wh=(snap?.weekly||[]).filter((w,ii)=>{const v=acts[ii];return v!==null&&v!==undefined&&v>=w.target;}).length;
+                      const pct=(snap?.daily?.length||0)+(snap?.weekly?.length||0)>0?Math.round(((dd+wh)/((snap?.daily?.length||0)+(snap?.weekly?.length||0)))*100):0;
+                      return(
+                        <div key={sec} style={{background:"#111",border:`1px solid ${color}20`,borderRadius:16,padding:20,position:"relative",overflow:"hidden"}}>
+                          <div style={{position:"absolute",top:-30,right:-30,width:120,height:120,borderRadius:"50%",background:`radial-gradient(circle,${color}07 0%,transparent 70%)`,pointerEvents:"none"}}/>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+                            <div>
+                              <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3}}>
+                                <span style={{color,fontSize:16}}>{snap?.icon||"◈"}</span>
+                                <span style={{color,fontSize:10,letterSpacing:2}}>{snap?.label?.toUpperCase()||sec}</span>
+                              </div>
+                              <div style={{color:"#fff",fontFamily:"'Bebas Neue',cursive",fontSize:18,letterSpacing:1}}>{snap?.goal||""}</div>
+                            </div>
+                            <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                              <Ring pct={pct} color={color} size={56}/>
+                              <span style={{position:"absolute",fontFamily:"'Bebas Neue',cursive",fontSize:12,color:"#fff"}}>{pct}%</span>
+                            </div>
+                          </div>
+                          <div style={{borderTop:"1px solid #1e1e1e",paddingTop:12,marginBottom:12}}>
+                            <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:6}}>DAILY</div>
+                            {(snap?.daily||[]).map((item,ii)=>(
+                              <div key={ii} style={{display:"flex",alignItems:"center",gap:8,padding:"3px 0"}}>
+                                <span style={{width:16,height:16,borderRadius:3,background:chks[ii]?color+"33":"transparent",border:`1.5px solid ${chks[ii]?color:"#2a2a2a"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                                  {chks[ii]&&<span style={{color,fontSize:9,fontWeight:900}}>✓</span>}
+                                </span>
+                                <span style={{fontSize:12,color:chks[ii]?"#444":"#bbb",textDecoration:chks[ii]?"line-through":"none"}}>{item.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{borderTop:"1px solid #1e1e1e",paddingTop:12}}>
+                            <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:8}}>WEEKLY TARGETS</div>
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                              {(snap?.weekly||[]).map((w,ii)=>{
+                                const val=acts[ii]; const hasVal=val!==null&&val!==undefined; const hit=hasVal&&val>=w.target;
+                                return(
+                                  <div key={ii} style={{background:hit?"#0a1a0f":hasVal?"#181818":"#181818",border:`1px solid ${hit?"#00FF8833":hasVal?color+"33":"#222"}`,borderRadius:8,padding:"8px 10px"}}>
+                                    <div style={{fontSize:9,color:"#555",marginBottom:3}}>{w.label}</div>
+                                    <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:18,color:hit?"#00FF88":hasVal?color:"#333",letterSpacing:1}}>
+                                      {hasVal?(w.type==="check"?(val===1?"DONE":"—"):val):"—"}
+                                      {hasVal&&w.type!=="check"&&<span style={{fontSize:8,color:"#444",marginLeft:3}}>{w.suffix}</span>}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
+            {isFuture&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
+                {Object.keys(sections).map(sec=>{
+                  const s=sections[sec]; const color=COLORS[sec];
+                  return(
+                    <div key={sec} style={{background:"#111",border:`1px solid ${color}15`,borderRadius:16,padding:20,opacity:0.75}}>
+                      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4}}>
+                        <span style={{color,fontSize:16}}>{s.icon}</span>
+                        <span style={{color,fontSize:10,letterSpacing:2}}>{s.label.toUpperCase()}</span>
+                      </div>
+                      <div style={{color:"#fff",fontFamily:"'Bebas Neue',cursive",fontSize:18,letterSpacing:1,marginBottom:14}}>{s.goal}</div>
+                      <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:6}}>TARGET FOR WK {offWkNum}</div>
+                      <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,color,letterSpacing:1,marginBottom:14}}>{GOAL_META[sec].format(Math.round(TRAJECTORIES[sec](offWkNum)))}</div>
+                      <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:6}}>DAILY PLAN</div>
+                      {s.daily.map((item,ii)=>(
+                        <div key={ii} style={{display:"flex",alignItems:"center",gap:8,padding:"3px 0"}}>
+                          <span style={{width:16,height:16,borderRadius:3,border:"1.5px solid #2a2a2a",flexShrink:0}}/>
+                          <span style={{fontSize:12,color:"#555"}}>{item.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Schedule */}
-      <ScheduleSection sched={sched} onUpdate={handleUpdateSched} editMode={editMode}/>
+      <ScheduleSection sched={sched} onUpdate={handleUpdateSched} editMode={editMode} weeklyGoals={weeklyGoals} onUpdateGoals={handleWeeklyGoals}/>
+
+      {/* Milestones */}
+      <MilestoneSection milestones={milestones} onUpdate={handleMilestones}/>
 
       {/* Outlook Calendar */}
       <CalendarSection/>
@@ -990,6 +1240,355 @@ export default function App(){
               <span style={{fontSize:9,color:"#333"}}>{s.label}</span>
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Milestone Section ────────────────────────────────────────────────────────
+function MilestoneSection({milestones,onUpdate}){
+  const [adding,setAdding]=useState(false);
+  const [newLabel,setNewLabel]=useState("");
+  const [newDate,setNewDate]=useState("");
+  const [newCat,setNewCat]=useState("business");
+
+  const cats={business:{color:"#00FF88",icon:"◈"},fatLoss:{color:"#FF6B35",icon:"◉"},savings:{color:"#FFD700",icon:"◆"},social:{color:"#A78BFA",icon:"◍"}};
+  const toggle=(id)=>onUpdate(milestones.map(m=>m.id===id?{...m,done:!m.done}:m));
+  const del=(id)=>onUpdate(milestones.filter(m=>m.id!==id));
+  const add=()=>{
+    if(!newLabel.trim())return;
+    onUpdate([...milestones,{id:uid(),label:newLabel.trim(),category:newCat,color:cats[newCat].color,done:false,date:newDate||"2026"}]);
+    setNewLabel("");setAdding(false);
+  };
+
+  const byDate=milestones.reduce((acc,m)=>{const k=m.date||"2026";(acc[k]=acc[k]||[]).push(m);return acc;},{});
+
+  return(
+    <div style={{padding:"0 20px 24px"}}>
+      <div style={{borderTop:"1px solid #1a1a1a",paddingTop:18,marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span style={{fontSize:9,color:"#444",letterSpacing:2}}>MILESTONES</span>
+        <button onClick={()=>setAdding(a=>!a)} style={{padding:"4px 12px",borderRadius:7,border:"1px solid #00FF8844",background:"#00FF8810",color:"#00FF88",fontSize:10,cursor:"pointer",letterSpacing:1}}>+ ADD</button>
+      </div>
+
+      {adding&&(
+        <div style={{background:"#111",border:"1px dashed #00FF8833",borderRadius:12,padding:14,marginBottom:14}}>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+            <input value={newLabel} onChange={e=>setNewLabel(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} placeholder="e.g. Sign first client" autoFocus
+              style={{flex:1,minWidth:160,background:"#1a1a1a",border:"1px solid #00FF8833",borderRadius:8,padding:"8px 12px",color:"#fff",fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+            <input value={newDate} onChange={e=>setNewDate(e.target.value)} placeholder="e.g. Mar 2026"
+              style={{width:110,background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:8,padding:"8px 10px",color:"#888",fontSize:11,outline:"none",fontFamily:"inherit"}}/>
+            <select value={newCat} onChange={e=>setNewCat(e.target.value)}
+              style={{background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:8,padding:"8px 10px",color:"#888",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+              <option value="business">Business</option>
+              <option value="fatLoss">Fat Loss</option>
+              <option value="savings">Savings</option>
+              <option value="social">Social</option>
+            </select>
+            <button onClick={add} style={{padding:"8px 16px",borderRadius:8,border:"1px solid #00FF8855",background:"#00FF8820",color:"#00FF88",fontSize:11,cursor:"pointer",letterSpacing:1}}>SAVE</button>
+            <button onClick={()=>{setAdding(false);setNewLabel("");}} style={{padding:"8px 12px",borderRadius:8,border:"1px solid #2a2a2a",background:"transparent",color:"#555",fontSize:11,cursor:"pointer"}}>✕</button>
+          </div>
+        </div>
+      )}
+
+      {milestones.length===0&&!adding&&(
+        <div style={{textAlign:"center",padding:"24px 0",color:"#333",fontSize:11}}>No milestones yet — add big one-off goals here</div>
+      )}
+
+      {Object.entries(byDate).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,items])=>{
+        const doneCt=items.filter(m=>m.done).length;
+        return(
+          <div key={date} style={{marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+              <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:13,color:"#444",letterSpacing:2}}>{date.toUpperCase()}</span>
+              <div style={{flex:1,height:1,background:"#1a1a1a"}}/>
+              <span style={{fontSize:9,color:doneCt===items.length&&items.length>0?"#00FF88":"#444"}}>{doneCt}/{items.length}</span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:7}}>
+              {items.map(m=>(
+                <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,background:m.done?"#0d0d0d":"#111",border:`1px solid ${m.done?"#1a1a1a":m.color+"25"}`,borderRadius:10,padding:"10px 14px",transition:"all 0.2s"}}>
+                  <button onClick={()=>toggle(m.id)} style={{width:22,height:22,borderRadius:6,border:`2px solid ${m.done?"#2a2a2a":m.color}`,background:m.done?"transparent":m.color+"18",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",transition:"all 0.2s"}}>
+                    {m.done?<span style={{color:"#2a2a2a",fontSize:11,fontWeight:900}}>✓</span>:<span style={{color:m.color,fontSize:8}}>{cats[m.category]?.icon||"◈"}</span>}
+                  </button>
+                  <span style={{flex:1,fontSize:12,color:m.done?"#333":"#ccc",textDecoration:m.done?"line-through":"none",transition:"all 0.2s"}}>{m.label}</span>
+                  {m.done&&<span style={{fontSize:9,color:"#00FF88",letterSpacing:1,flexShrink:0}}>DONE</span>}
+                  <button onClick={()=>del(m.id)} style={{width:18,height:18,borderRadius:"50%",background:"transparent",border:"none",color:"#333",fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1}}>×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Week Review Page ─────────────────────────────────────────────────────────
+function WeekReviewPage({history,checkins,sections,onBack,currentWeekNum,currentWeekKey}){
+  const today=new Date();
+  const yearStart=new Date(today.getFullYear(),0,1);
+
+  // Build list of all 52 weeks for this year
+  const allWeeks=Array.from({length:52},(_,i)=>{
+    const wkNum=i+1;
+    const d=new Date(yearStart);
+    d.setDate(d.getDate()+(i)*7-((yearStart.getDay()+6)%7));
+    const key=`yz-week-${d.toISOString().slice(0,10)}`;
+    return{wkNum,key,date:new Date(d),isPast:wkNum<currentWeekNum,isCurrent:wkNum===currentWeekNum,isFuture:wkNum>currentWeekNum};
+  });
+
+  const [selectedWk,setSelectedWk]=useState(currentWeekNum);
+  const wk=allWeeks[selectedWk-1];
+  const histData=history[wk?.key];
+  const checkinData=checkins[wk?.key];
+
+  const COLORS={business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA"};
+  const LABELS={business:"Business",fatLoss:"Fat Loss",savings:"Savings",social:"Social"};
+  const fmtD=d=>new Date(d).toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+
+  const endDate=new Date(wk?.date||today);
+  endDate.setDate(endDate.getDate()+6);
+
+  // Calculate pct for a past week
+  const calcPct=(wd,secKey)=>{
+    if(!wd)return null;
+    const c=wd.checks?.[secKey]||[];
+    const a=wd.actuals?.[secKey]||[];
+    const snap=wd.sectionSnapshot?.[secKey]||sections[secKey]||DEFAULT_SECTIONS[secKey];
+    const total=(snap?.daily?.length||4)+(snap?.weekly?.length||4);
+    const done=c.filter(Boolean).length+(snap?.weekly||[]).filter((w,i)=>{const v=a[i];return v!==null&&v!==undefined&&v>=w.target;}).length;
+    return total>0?Math.round((done/total)*100):0;
+  };
+
+  const sectionKeys=Object.keys(sections||DEFAULT_SECTIONS);
+
+  return(
+    <div style={{minHeight:"100vh",background:"#0a0a0a",color:"#fff",fontFamily:"'DM Mono',monospace"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&display=swap');*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}body{background:#0a0a0a;}`}</style>
+
+      {/* Header */}
+      <div style={{borderBottom:"1px solid #1a1a1a",padding:"14px 20px",display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,background:"#0a0a0a",zIndex:100}}>
+        <button onClick={onBack} style={{background:"#181818",border:"1px solid #252525",borderRadius:8,padding:"6px 14px",cursor:"pointer",color:"#888",fontSize:11,letterSpacing:1}}>← BACK</button>
+        <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,letterSpacing:3}}>WEEK REVIEW</span>
+        <span style={{fontSize:9,color:"#444",letterSpacing:1}}>52 WEEKS · {currentWeekNum} ELAPSED</span>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"200px 1fr",gap:0,minHeight:"calc(100vh - 57px)"}}>
+
+        {/* Left: week list */}
+        <div style={{borderRight:"1px solid #1a1a1a",padding:"12px 0",overflowY:"auto",maxHeight:"calc(100vh - 57px)"}}>
+          {allWeeks.map(w=>{
+            const wd=history[w.key];
+            const pcts=sectionKeys.map(s=>calcPct(wd,s)).filter(v=>v!==null);
+            const overall=pcts.length>0?Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length):null;
+            const oc=overall===null?"#333":overall>=75?"#00FF88":overall>=50?"#FFD700":"#FF6B35";
+            const isSelected=w.wkNum===selectedWk;
+            return(
+              <button key={w.wkNum} onClick={()=>setSelectedWk(w.wkNum)}
+                style={{width:"100%",padding:"10px 14px",background:isSelected?"#141414":"transparent",borderLeft:`3px solid ${isSelected?oc:"transparent"}`,border:"none",borderBottom:"1px solid #111",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                <div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:14,color:w.isCurrent?"#00FF88":isSelected?"#fff":"#555",letterSpacing:1}}>WK {w.wkNum}</span>
+                    {w.isCurrent&&<span style={{fontSize:7,color:"#00FF88",letterSpacing:1,background:"#00FF8815",borderRadius:4,padding:"1px 5px"}}>NOW</span>}
+                  </div>
+                  <div style={{fontSize:9,color:"#333"}}>{fmtD(w.date)}</div>
+                </div>
+                {overall!==null?(
+                  <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:16,color:oc,letterSpacing:1}}>{overall}%</span>
+                ):w.isFuture?(
+                  <span style={{fontSize:8,color:"#222",letterSpacing:1}}>AHEAD</span>
+                ):null}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right: week detail */}
+        <div style={{padding:24,overflowY:"auto",maxHeight:"calc(100vh - 57px)"}}>
+          {/* Week header */}
+          <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:24}}>
+            <button onClick={()=>setSelectedWk(w=>Math.max(1,w-1))} style={{width:32,height:32,borderRadius:8,border:"1px solid #252525",background:"#181818",color:"#888",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:28,color:"#fff",letterSpacing:2,lineHeight:1}}>WEEK {wk?.wkNum}</div>
+              <div style={{fontSize:11,color:"#555",marginTop:2}}>{fmtD(wk?.date)} – {fmtD(endDate)} · Q{Math.ceil((wk?.wkNum||1)/13)}</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              {wk?.isCurrent&&<div style={{background:"#00FF8815",border:"1px solid #00FF8833",borderRadius:8,padding:"6px 12px",fontSize:10,color:"#00FF88",letterSpacing:1}}>CURRENT WEEK</div>}
+              {wk?.isFuture&&<div style={{background:"#1a1a1a",border:"1px solid #252525",borderRadius:8,padding:"6px 12px",fontSize:10,color:"#444",letterSpacing:1}}>UPCOMING</div>}
+              {wk?.isPast&&!histData&&<div style={{background:"#1a1a1a",border:"1px solid #252525",borderRadius:8,padding:"6px 12px",fontSize:10,color:"#333",letterSpacing:1}}>NO DATA</div>}
+            </div>
+            <button onClick={()=>setSelectedWk(w=>Math.min(52,w+1))} style={{width:32,height:32,borderRadius:8,border:"1px solid #252525",background:"#181818",color:"#888",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+          </div>
+
+          {/* Past week with data */}
+          {wk?.isPast&&histData&&(
+            <>
+              {/* Overall score */}
+              {(()=>{
+                const pcts=sectionKeys.map(s=>calcPct(histData,s));
+                const overall=Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length);
+                const oc=overall>=75?"#00FF88":overall>=50?"#FFD700":"#FF6B35";
+                return(
+                  <div style={{background:"#111",border:`1px solid ${oc}22`,borderRadius:14,padding:20,marginBottom:16,display:"flex",alignItems:"center",gap:20}}>
+                    <div>
+                      <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:4}}>OVERALL SCORE</div>
+                      <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:56,color:oc,letterSpacing:2,lineHeight:1,filter:`drop-shadow(0 0 12px ${oc}55)`}}>{overall}%</div>
+                    </div>
+                    <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                      {sectionKeys.map((sec,i)=>{
+                        const p=pcts[i];
+                        const c=COLORS[sec]||"#fff";
+                        return(
+                          <div key={sec}>
+                            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                              <span style={{fontSize:9,color:c,letterSpacing:1}}>{LABELS[sec]||sec}</span>
+                              <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:13,color:c}}>{p}%</span>
+                            </div>
+                            <div style={{height:4,background:"#1a1a1a",borderRadius:2,overflow:"hidden"}}>
+                              <div style={{height:"100%",width:`${p}%`,background:c,borderRadius:2}}/>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Daily checks */}
+              <div style={{background:"#111",border:"1px solid #1e1e1e",borderRadius:14,padding:20,marginBottom:16}}>
+                <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:14}}>DAILY NON-NEGOTIABLES</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10}}>
+                  {sectionKeys.map(sec=>{
+                    const snap=histData.sectionSnapshot?.[sec]||sections[sec]||DEFAULT_SECTIONS[sec];
+                    const checks=histData.checks?.[sec]||[];
+                    const done=checks.filter(Boolean).length;
+                    const color=COLORS[sec]||"#fff";
+                    return(
+                      <div key={sec} style={{background:"#181818",borderRadius:10,padding:12}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                          <span style={{fontSize:10,color,letterSpacing:1}}>{LABELS[sec]}</span>
+                          <span style={{fontSize:10,color:done===snap?.daily?.length?"#00FF88":color}}>{done}/{snap?.daily?.length||0}</span>
+                        </div>
+                        {(snap?.daily||[]).map((item,i)=>(
+                          <div key={i} style={{display:"flex",alignItems:"center",gap:7,padding:"3px 0"}}>
+                            <span style={{width:14,height:14,borderRadius:3,background:checks[i]?color+"33":"transparent",border:`1.5px solid ${checks[i]?color:"#2a2a2a"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                              {checks[i]&&<span style={{color,fontSize:8,fontWeight:900}}>✓</span>}
+                            </span>
+                            <span style={{fontSize:11,color:checks[i]?"#444":"#666",textDecoration:checks[i]?"line-through":"none"}}>{item.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Weekly actuals */}
+              <div style={{background:"#111",border:"1px solid #1e1e1e",borderRadius:14,padding:20,marginBottom:16}}>
+                <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:14}}>WEEKLY TARGETS</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10}}>
+                  {sectionKeys.map(sec=>{
+                    const snap=histData.sectionSnapshot?.[sec]||sections[sec]||DEFAULT_SECTIONS[sec];
+                    const acts=histData.actuals?.[sec]||[];
+                    const color=COLORS[sec]||"#fff";
+                    return(
+                      <div key={sec} style={{background:"#181818",borderRadius:10,padding:12}}>
+                        <div style={{fontSize:10,color,letterSpacing:1,marginBottom:8}}>{LABELS[sec]}</div>
+                        {(snap?.weekly||[]).map((w,i)=>{
+                          const val=acts[i];
+                          const hasVal=val!==null&&val!==undefined;
+                          const hit=hasVal&&val>=w.target;
+                          return(
+                            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:"1px solid #1e1e1e"}}>
+                              <span style={{fontSize:10,color:"#666"}}>{w.label}</span>
+                              <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:14,color:hit?"#00FF88":hasVal?color:"#333",letterSpacing:1}}>
+                                {hasVal?(w.type==="check"?(val===1?"DONE":"—"):val):"—"}
+                                {hasVal&&w.type!=="check"&&<span style={{fontSize:9,color:"#333",marginLeft:4}}>{w.suffix}</span>}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Check-in data */}
+              {checkinData&&(
+                <div style={{background:"#111",border:"1px solid #1e1e1e",borderRadius:14,padding:20}}>
+                  <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:14}}>GOAL CHECK-IN</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
+                    {[{key:"business",label:"Revenue",format:v=>`£${v.toLocaleString()}`},{key:"fatLoss",label:"Weight",format:v=>`${v}kg`},{key:"savings",label:"Savings",format:v=>`£${v.toLocaleString()}`},{key:"social",label:"Followers",format:v=>`${v}`}].map(f=>(
+                      checkinData[f.key]!==null&&checkinData[f.key]!==undefined&&(
+                        <div key={f.key} style={{background:"#181818",borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
+                          <div style={{fontSize:9,color:COLORS[f.key],letterSpacing:1,marginBottom:4}}>{f.label.toUpperCase()}</div>
+                          <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,color:"#fff",letterSpacing:1}}>{f.format(checkinData[f.key])}</div>
+                          <div style={{fontSize:9,color:"#444",marginTop:2}}>vs target: {GOAL_META[f.key].format(Math.round(TRAJECTORIES[f.key](wk.wkNum)))}</div>
+                        </div>
+                      )
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Past week no data */}
+          {wk?.isPast&&!histData&&(
+            <div style={{textAlign:"center",padding:"60px 20px",color:"#333"}}>
+              <div style={{fontSize:32,marginBottom:12}}>—</div>
+              <div style={{fontSize:12,marginBottom:4}}>No data recorded for this week</div>
+              <div style={{fontSize:10,color:"#2a2a2a"}}>Start logging from the dashboard to see weekly breakdowns here</div>
+            </div>
+          )}
+
+          {/* Current week */}
+          {wk?.isCurrent&&(
+            <div style={{textAlign:"center",padding:"40px 20px"}}>
+              <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:20,color:"#00FF88",letterSpacing:2,marginBottom:8}}>THIS WEEK IS IN PROGRESS</div>
+              <div style={{fontSize:11,color:"#555",marginBottom:20}}>Head back to the dashboard to log today's inputs</div>
+              <button onClick={onBack} style={{padding:"11px 28px",borderRadius:10,border:"1px solid #00FF8855",background:"#00FF8820",color:"#00FF88",fontFamily:"'Bebas Neue',cursive",fontSize:16,cursor:"pointer",letterSpacing:2}}>GO TO DASHBOARD →</button>
+            </div>
+          )}
+
+          {/* Future week */}
+          {wk?.isFuture&&(
+            <div>
+              <div style={{background:"#111",border:"1px solid #1e1e1e",borderRadius:14,padding:20,marginBottom:16}}>
+                <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:12}}>GOAL TARGETS FOR THIS WEEK</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
+                  {[{key:"business",label:"Revenue target",color:"#00FF88"},{key:"fatLoss",label:"Weight target",color:"#FF6B35"},{key:"savings",label:"Savings target",color:"#FFD700"},{key:"social",label:"Followers target",color:"#A78BFA"}].map(f=>(
+                    <div key={f.key} style={{background:"#181818",borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
+                      <div style={{fontSize:9,color:f.color,letterSpacing:1,marginBottom:4}}>{f.label.toUpperCase()}</div>
+                      <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,color:"#fff",letterSpacing:1}}>{GOAL_META[f.key].format(Math.round(TRAJECTORIES[f.key](wk.wkNum)))}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{background:"#111",border:"1px solid #1e1e1e",borderRadius:14,padding:20}}>
+                <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:12}}>YOUR DAILY INPUTS EACH DAY</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10}}>
+                  {sectionKeys.map(sec=>{
+                    const s=sections[sec]||DEFAULT_SECTIONS[sec];
+                    const color=COLORS[sec]||"#fff";
+                    return(
+                      <div key={sec} style={{background:"#181818",borderRadius:10,padding:12}}>
+                        <div style={{fontSize:10,color,letterSpacing:1,marginBottom:8}}>{LABELS[sec]}</div>
+                        {(s?.daily||[]).map((item,i)=>(
+                          <div key={i} style={{display:"flex",alignItems:"center",gap:7,padding:"3px 0"}}>
+                            <span style={{width:14,height:14,borderRadius:3,background:"transparent",border:"1.5px solid #2a2a2a",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}/>
+                            <span style={{fontSize:11,color:"#555"}}>{item.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
