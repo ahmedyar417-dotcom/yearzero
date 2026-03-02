@@ -13,6 +13,55 @@ const getWeekKey = () => {
 };
 const uid = () => Math.random().toString(36).slice(2,8);
 
+// ─── Streak helpers ───────────────────────────────────────────────────────────
+function calcStreak(history, sectionKey, taskIdx) {
+  const keys = Object.keys(history).sort().reverse(); // newest first
+  let streak = 0;
+  for (const key of keys) {
+    const checked = history[key]?.checks?.[sectionKey]?.[taskIdx];
+    if (checked) streak++;
+    else break;
+  }
+  return streak;
+}
+
+function calcWeekDelta(history, currentWeekKey, sectionKey, taskIdx, actuals) {
+  // current week value
+  const currVal = actuals[sectionKey]?.[taskIdx];
+  if (currVal === null || currVal === undefined) return null;
+  // last week key
+  const keys = Object.keys(history).sort().reverse();
+  const lastKey = keys.find(k => k !== currentWeekKey);
+  if (!lastKey) return null;
+  const lastVal = history[lastKey]?.actuals?.[sectionKey]?.[taskIdx];
+  if (lastVal === null || lastVal === undefined) return null;
+  return currVal - lastVal;
+}
+
+function exportData(history, checkins, milestones, sections) {
+  const rows = [['Week','Section','Daily Done','Weekly Hit %','Check-in Business','Check-in Weight','Check-in Savings','Check-in Followers','Notes']];
+  Object.entries(history).sort().forEach(([key, wd]) => {
+    const date = key.replace('yz-week-','');
+    const ci = checkins[key] || {};
+    const note = wd.notes || '';
+    Object.keys(sections).forEach(sec => {
+      const snap = wd.sectionSnapshot?.[sec] || sections[sec] || DEFAULT_SECTIONS[sec];
+      const c = wd.checks?.[sec] || [];
+      const a = wd.actuals?.[sec] || [];
+      const dailyDone = c.filter(Boolean).length;
+      const weeklyHit = (snap?.weekly||[]).filter((w,i)=>{const v=a[i];return v!==null&&v!==undefined&&v>=w.target;}).length;
+      const weeklyTotal = snap?.weekly?.length || 0;
+      rows.push([date, sec, dailyDone, weeklyTotal>0?Math.round((weeklyHit/weeklyTotal)*100)+'%':'—', ci.business||'', ci.fatLoss||'', ci.savings||'', ci.social||'', note]);
+    });
+  });
+  const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='liftoffyear-export.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+
 // ─── Trajectories ─────────────────────────────────────────────────────────────
 const TRAJECTORIES = {
   business: (wk) => Math.min(15000, Math.round((wk/52)*15000)),
@@ -175,6 +224,12 @@ function getWeekDays(refDate) {
   return Array.from({length:7}, (_,i) => { const dd = new Date(monday); dd.setDate(monday.getDate()+i); return dd; });
 }
 
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+const THEMES = {
+  dark:  { bg:"#0a0a0a", card:"#111", border:"#1a1a1a", border2:"#252525", text:"#fff", muted:"#555", dim:"#333", input:"#1a1a1a" },
+  light: { bg:"#f4f4f0", card:"#fff", border:"#e0e0e0", border2:"#d0d0d0", text:"#111", muted:"#888", dim:"#aaa", input:"#f9f9f6" },
+};
 // ─── Ring ─────────────────────────────────────────────────────────────────────
 function Ring({pct,color,size=60}){
   const r=(size-8)/2,circ=2*Math.PI*r,dash=Math.min(pct/100,1)*circ;
@@ -189,16 +244,26 @@ function Ring({pct,color,size=60}){
 }
 
 // ─── CheckRow ─────────────────────────────────────────────────────────────────
-function CheckRow({label,done,color,onToggle,editMode,onDelete}){
+function CheckRow({label,done,color,onToggle,editMode,onDelete,streak,onRename}){
+  const [editing,setEditing]=useState(false);
+  const [val,setVal]=useState(label);
+  const save=()=>{ if(val.trim()&&onRename) onRename(val.trim()); setEditing(false); };
   return(
     <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 0"}}>
       {editMode&&<button onClick={onDelete} style={{width:20,height:20,borderRadius:"50%",background:"#FF6B3522",border:"1px solid #FF6B3566",color:"#FF6B35",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1}}>×</button>}
-      <button onClick={editMode?undefined:onToggle} style={{display:"flex",alignItems:"center",gap:10,background:"none",border:"none",cursor:editMode?"default":"pointer",padding:"2px 0",flex:1,textAlign:"left",opacity:editMode?0.6:1}}>
+      <button onClick={editMode?undefined:onToggle} style={{display:"flex",alignItems:"center",gap:10,background:"none",border:"none",cursor:editMode?"default":"pointer",padding:"2px 0",flex:1,textAlign:"left",opacity:editMode&&!editing?0.6:1}}>
         <span style={{width:18,height:18,borderRadius:4,border:`2px solid ${done?color:"#3a3a3a"}`,background:done?color+"22":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.18s",boxShadow:done?`0 0 7px ${color}55`:"none"}}>
           {done&&<span style={{color,fontSize:11,fontWeight:900,lineHeight:1}}>✓</span>}
         </span>
-        <span style={{fontSize:13,color:done?"#444":"#bbb",textDecoration:done?"line-through":"none",letterSpacing:0.2}}>{label}</span>
+        {editMode&&editing?(
+          <input value={val} onChange={e=>setVal(e.target.value)} onBlur={save} onKeyDown={e=>{if(e.key==="Enter")save();if(e.key==="Escape")setEditing(false);}} autoFocus onClick={e=>e.stopPropagation()}
+            style={{flex:1,background:"#1a1a1a",border:`1px solid ${color}44`,borderRadius:6,padding:"3px 8px",color:"#fff",fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+        ):(
+          <span style={{fontSize:13,color:done?"#444":"#bbb",textDecoration:done?"line-through":"none",letterSpacing:0.2,flex:1}}>{label}</span>
+        )}
       </button>
+      {editMode&&!editing&&<button onClick={()=>{setEditing(true);setVal(label);}} style={{fontSize:9,color:"#444",background:"none",border:"none",cursor:"pointer",padding:"0 4px",flexShrink:0}}>✏</button>}
+      {!editMode&&streak>1&&<span style={{fontSize:9,color:"#FF9500",letterSpacing:0,flexShrink:0}}>🔥{streak}</span>}
     </div>
   );
 }
@@ -316,7 +381,10 @@ function WeekCard({item,color,onClick,editMode,onDelete}){
           <div style={{fontSize:10,color:"#555",marginBottom:3}}>{item.label}</div>
           {hasData&&!editMode?(
             <>
-              <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:20,color:dc,letterSpacing:1}}>{isCheck?(item.actual===1?"✓ DONE":"✗ PENDING"):item.actual}{!isCheck&&<span style={{fontSize:9,color:"#444",marginLeft:5}}>{item.suffix}</span>}</div>
+              <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+                <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:20,color:dc,letterSpacing:1}}>{isCheck?(item.actual===1?"✓ DONE":"✗ PENDING"):item.actual}{!isCheck&&<span style={{fontSize:9,color:"#444",marginLeft:5}}>{item.suffix}</span>}</div>
+                {item.delta!==null&&item.delta!==undefined&&!isCheck&&<span style={{fontSize:9,color:item.delta>0?"#00FF88":item.delta<0?"#FF6B35":"#555",letterSpacing:0}}>{item.delta>0?"+":""}{item.delta}</span>}
+              </div>
               {!isCheck&&<div style={{marginTop:5,height:2,background:"#1e1e1e",borderRadius:1,overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:dc}}/></div>}
             </>
           ):(<div style={{fontSize:11,color:editMode?"#555":"#383838"}}>{editMode?item.suffix:`tap to log ${item.suffix}`}</div>)}
@@ -327,7 +395,7 @@ function WeekCard({item,color,onClick,editMode,onDelete}){
 }
 
 // ─── Goal Card ────────────────────────────────────────────────────────────────
-function GoalCard({sectionKey,section,checks,onCheck,actuals,onSave,editMode,onUpdateSection}){
+function GoalCard({sectionKey,section,checks,onCheck,actuals,onSave,editMode,onUpdateSection,history,WEEK_KEY}){
   const [modal,setModal]=useState(null); const [addDaily,setAddDaily]=useState(false); const [addWeekly,setAddWeekly]=useState(false);
   const dd=checks.filter(Boolean).length;
   const wh=section.weekly.filter((w,i)=>{const a=actuals[i];return a!==null&&a!==undefined&&a>=w.target;}).length;
@@ -355,13 +423,20 @@ function GoalCard({sectionKey,section,checks,onCheck,actuals,onSave,editMode,onU
         </div>
         <div style={{borderTop:"1px solid #1e1e1e",paddingTop:14}}>
           <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:7}}>DAILY NON-NEGOTIABLES</div>
-          {section.daily.map((item,i)=><CheckRow key={item.key} label={`${item.label} · ${item.unit}`} done={checks[i]||false} color={section.color} onToggle={()=>onCheck(sectionKey,i)} editMode={editMode} onDelete={()=>onUpdateSection(sectionKey,{...section,daily:section.daily.filter((_,j)=>j!==i)})}/>)}
+          {section.daily.map((item,i)=>{
+            const streak=history?calcStreak(history,sectionKey,i):0;
+            const rename=(newLabel)=>{const parts=newLabel.split("·");const lbl=parts[0].trim();const unt=parts.length>1?parts[1].trim():item.unit;onUpdateSection(sectionKey,{...section,daily:section.daily.map((d,j)=>j===i?{...d,label:lbl,unit:unt}:d)});};
+            return <CheckRow key={item.key} label={`${item.label} · ${item.unit}`} done={checks[i]||false} color={section.color} onToggle={()=>onCheck(sectionKey,i)} editMode={editMode} onDelete={()=>onUpdateSection(sectionKey,{...section,daily:section.daily.filter((_,j)=>j!==i)})} streak={streak} onRename={rename}/>;
+          })}
           {editMode&&<button onClick={()=>setAddDaily(true)} style={{display:"flex",alignItems:"center",gap:7,marginTop:8,background:section.color+"12",border:`1px dashed ${section.color}44`,borderRadius:8,padding:"7px 12px",cursor:"pointer",color:section.color,fontSize:11,letterSpacing:1,width:"100%"}}><span style={{fontSize:16}}>+</span> ADD DAILY TASK</button>}
         </div>
         <div style={{borderTop:"1px solid #1e1e1e",paddingTop:14}}>
           <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:10}}>WEEKLY TARGETS {!editMode&&<span style={{color:"#2a2a2a"}}>· tap to log</span>}</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
-            {section.weekly.map((w,i)=><WeekCard key={w.key} item={{...w,actual:actuals[i]}} color={section.color} onClick={()=>setModal(i)} editMode={editMode} onDelete={()=>onUpdateSection(sectionKey,{...section,weekly:section.weekly.filter((_,j)=>j!==i)})}/>)}
+            {section.weekly.map((w,i)=>{
+              const delta=history?calcWeekDelta(history,WEEK_KEY,sectionKey,i,actuals):null;
+              return <WeekCard key={w.key} item={{...w,actual:actuals[i],delta}} color={section.color} onClick={()=>setModal(i)} editMode={editMode} onDelete={()=>onUpdateSection(sectionKey,{...section,weekly:section.weekly.filter((_,j)=>j!==i)})}/>;
+            })}
           </div>
           {editMode&&<button onClick={()=>setAddWeekly(true)} style={{display:"flex",alignItems:"center",gap:7,marginTop:8,background:section.color+"12",border:`1px dashed ${section.color}44`,borderRadius:8,padding:"7px 12px",cursor:"pointer",color:section.color,fontSize:11,letterSpacing:1,width:"100%"}}><span style={{fontSize:16}}>+</span> ADD WEEKLY TARGET</button>}
         </div>
@@ -469,7 +544,7 @@ function ScheduleSection({sched,onUpdate,editMode,weeklyGoals,onUpdateGoals,onAd
       </div>
 
       {/* Day columns */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
+      <div className="sched-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
         {sched.map(day=>(
           <div key={day.id} style={{background:"#111",border:`1px solid ${editMode?day.color+"44":day.color+"20"}`,borderRadius:12,padding:16}}>
             <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:18,color:day.color,letterSpacing:2}}>{day.label}</div>
@@ -599,7 +674,7 @@ function CheckInModal({weekNum,existing,onSave,onDismiss}){
 }
 
 // ─── SVG Line Chart ───────────────────────────────────────────────────────────
-function LineChart({data,target,color,yMin,yMax,unit}){
+function LineChart({data,target,color,yMin,yMax,unit,milestoneWeeks}){
   const W=320,H=160,PAD={top:16,right:20,bottom:28,left:52};
   const iW=W-PAD.left-PAD.right,iH=H-PAD.top-PAD.bottom;
   const trajPoints=Array.from({length:52},(_,i)=>target(i+1));
@@ -627,12 +702,18 @@ function LineChart({data,target,color,yMin,yMax,unit}){
       {actualPath&&<path d={actualPath} fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{filter:`drop-shadow(0 0 4px ${color}88)`}}/>}
       {pts.map((d,i)=><circle key={i} cx={toX(d.week)} cy={toY(d.value)} r={3} fill={color} stroke="#0a0a0a" strokeWidth={1.5}/>)}
       {pts.length>0&&<text x={toX(pts[pts.length-1].week)+6} y={toY(pts[pts.length-1].value)+4} fill={color} fontSize={10} fontFamily="DM Mono,monospace" fontWeight="bold">{fmtY(pts[pts.length-1].value)}</text>}
+      {(milestoneWeeks||[]).map((mw,i)=>(
+        <g key={i}>
+          <line x1={toX(mw.week)} y1={PAD.top} x2={toX(mw.week)} y2={H-PAD.bottom} stroke="#FFD700" strokeWidth={1.5} strokeDasharray="4,2" opacity={0.7}/>
+          <circle cx={toX(mw.week)} cy={PAD.top+6} r={4} fill="#FFD700" opacity={0.9}/>
+        </g>
+      ))}
     </svg>
   );
 }
 
 // ─── Progress Page ────────────────────────────────────────────────────────────
-function ProgressPage({checkins,onBack,weekNum}){
+function ProgressPage({checkins,onBack,weekNum,milestones,history}){
   const charts=[
     {key:"business",color:"#00FF88",icon:"◈",label:"Monthly Revenue",yMin:0,yMax:15000},
     {key:"fatLoss",color:"#FF6B35",icon:"◉",label:"Body Weight (kg)",yMin:83,yMax:104},
@@ -640,7 +721,7 @@ function ProgressPage({checkins,onBack,weekNum}){
     {key:"social",color:"#A78BFA",icon:"◍",label:"X Followers",yMin:0,yMax:5000},
   ];
   return(
-    <div style={{minHeight:"100vh",background:"#0a0a0a",color:"#fff",fontFamily:"'DM Mono',monospace"}}>
+    <div style={{minHeight:"100vh",background:darkMode?"#0a0a0a":"#f4f4f0",color:darkMode?"#fff":"#111",fontFamily:"'DM Mono',monospace",transition:"background 0.3s"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&display=swap');`}</style>
       <div style={{borderBottom:"1px solid #1a1a1a",padding:"14px 20px",display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,background:"#0a0a0a",zIndex:100}}>
         <button onClick={onBack} style={{background:"#181818",border:"1px solid #252525",borderRadius:8,padding:"6px 14px",cursor:"pointer",color:"#888",fontSize:11,letterSpacing:1}}>← BACK</button>
@@ -677,7 +758,12 @@ function ProgressPage({checkins,onBack,weekNum}){
               {data.length===0?(
                 <div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",color:"#333",fontSize:11,border:"1px dashed #222",borderRadius:10}}>No data yet — check in each week</div>
               ):(
-                <LineChart data={data} target={TRAJECTORIES[ch.key]} color={ch.color} unit={meta.unit} yMin={ch.yMin} yMax={ch.yMax}/>
+                <LineChart data={data} target={TRAJECTORIES[ch.key]} color={ch.color} unit={meta.unit} yMin={ch.yMin} yMax={ch.yMax}
+                  milestoneWeeks={(milestones||[]).filter(m=>m.done&&m.category===ch.key).map(m=>{
+                    // find the week they were completed — approximate from date stored or use current
+                    const wkNum=m.completedWeek||weekNum;
+                    return {week:wkNum,label:m.label};
+                  })}/>
               )}
             </div>
           );
@@ -958,7 +1044,11 @@ export default function App(){
   const [editMode,setEditMode]=useState(false);
   const [page,setPage]=useState("dashboard");
   const [showCheckin,setShowCheckin]=useState(false);
-  const [viewWeekOffset,setViewWeekOffset]=useState(0); // 0=current, -1=last week, +1=next week
+  const [viewWeekOffset,setViewWeekOffset]=useState(0);
+  const [darkMode,setDarkMode]=useState(()=>ls.get('yz-dark')!==false);
+  const [weekNote,setWeekNote]=useState(()=>ls.get(getWeekKey())?.notes||'');
+  const [showEndOfWeek,setShowEndOfWeek]=useState(false);
+  const [showCheckinHistory,setShowCheckinHistory]=useState(false);
 
   useEffect(()=>{
     const wd=ls.get(WEEK_KEY);
@@ -968,6 +1058,11 @@ export default function App(){
     const ci=ls.get("yz-checkins")||{};
     setCheckins(ci);
     if(!ci[WEEK_KEY]) setTimeout(()=>setShowCheckin(true),800);
+    const wd2=ls.get(getWeekKey()); if(wd2?.notes) setWeekNote(wd2.notes||'');
+    // Sunday end-of-week prompt
+    const todayDay=new Date().getDay(); // 0=Sun
+    const eowKey='yz-eow-'+getWeekKey();
+    if(todayDay===0&&!ls.get(eowKey)) setTimeout(()=>setShowEndOfWeek(true),1500);
   },[]);
 
   const flash=()=>{setSaveFlash(true);setTimeout(()=>setSaveFlash(false),1400);};
@@ -992,6 +1087,14 @@ export default function App(){
   const handleCheckinSave=(data)=>{const newCi={...checkins,[WEEK_KEY]:data};setCheckins(newCi);ls.set("yz-checkins",newCi);setShowCheckin(false);flash();};
   const handleMilestones=(ms)=>{setMilestones(ms);ls.set('yz-milestones',ms);flash();};
   const handleWeeklyGoals=(goals)=>{setWeeklyGoals(goals);ls.set('yz-weekly-goals',goals);flash();};
+  const handleSaveNote=(note)=>{
+    const wd=ls.get(WEEK_KEY)||{};
+    ls.set(WEEK_KEY,{...wd,notes:note});
+    const newHist={...history,[WEEK_KEY]:{...history[WEEK_KEY],notes:note}};
+    ls.set("yz-history",newHist); setHistory(newHist); setWeekNote(note); flash();
+  };
+  const handleToggleDark=()=>{ setDarkMode(d=>{ ls.set('yz-dark',!d); return !d; }); };
+  const handleExport=()=>exportData(history,checkins,milestones,sections);
   const handleAddWeeklyTarget=(secKey,label)=>{
     // Add as a weekly target in the matching section
     const sec=sections[secKey];
@@ -1007,23 +1110,26 @@ export default function App(){
   const pastWeeks=Object.keys(history).filter(k=>k!==WEEK_KEY).length;
   const checkinDone=!!checkins[WEEK_KEY];
 
-  if(page==="progress") return <ProgressPage checkins={checkins} onBack={()=>setPage("dashboard")} weekNum={weekNum}/>;
+  if(page==="progress") return <ProgressPage checkins={checkins} onBack={()=>setPage("dashboard")} weekNum={weekNum} milestones={milestones} history={history}/>;
 
   return(
-    <div style={{minHeight:"100vh",background:"#0a0a0a",color:"#fff",fontFamily:"'DM Mono',monospace"}}>
+    <div style={{minHeight:"100vh",background:darkMode?"#0a0a0a":"#f4f4f0",color:darkMode?"#fff":"#111",fontFamily:"'DM Mono',monospace",transition:"background 0.3s"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&display=swap');
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-        body{background:#0a0a0a;overscroll-behavior:none;}
-        ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-track{background:#111;} ::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:2px;}
+        body{background:${darkMode?'#0a0a0a':'#f4f4f0'};overscroll-behavior:none;transition:background 0.3s;}
+        ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-track{background:${darkMode?'#111':'#e0e0e0'};} ::-webkit-scrollbar-thumb{background:${darkMode?'#2a2a2a':'#c0c0c0'};border-radius:2px;}
         button{font-family:inherit;transition:opacity 0.15s;} button:hover{opacity:0.82;} button:active{opacity:0.65;transform:scale(0.97);}
-        input{font-family:inherit;} input::placeholder{color:#444;}
+        input,textarea{font-family:inherit;} input::placeholder,textarea::placeholder{color:#555;}
         input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5);}
         input[type=time]::-webkit-calendar-picker-indicator{filter:invert(0.5);}
+        @media(max-width:600px){.goal-grid{grid-template-columns:1fr!important;}.sched-grid{grid-template-columns:1fr!important;}}
       `}</style>
 
       {showHistory&&<HistoryModal history={history} sectionKeys={Object.keys(sections)} onClose={()=>setShowHistory(false)}/>}
       {showCheckin&&<CheckInModal weekNum={weekNum} existing={checkins[WEEK_KEY]} onSave={handleCheckinSave} onDismiss={()=>setShowCheckin(false)}/>}
+      {showEndOfWeek&&<EndOfWeekModal weekNum={weekNum} weekKey={WEEK_KEY} history={history} sections={sections} note={weekNote} onSaveNote={handleSaveNote} onClose={()=>{ls.set('yz-eow-'+WEEK_KEY,true);setShowEndOfWeek(false);}}/>}
+      {showCheckinHistory&&<CheckinHistoryModal checkins={checkins} onClose={()=>setShowCheckinHistory(false)}/>}
 
       <div style={{position:"fixed",bottom:20,right:20,zIndex:5000,background:"#141414",border:"1px solid #00FF8855",borderRadius:10,padding:"9px 16px",fontSize:11,color:"#00FF88",letterSpacing:1,transition:"opacity 0.3s",opacity:saveFlash?1:0,pointerEvents:"none"}}>✓ Saved</div>
 
@@ -1038,6 +1144,9 @@ export default function App(){
           <button onClick={()=>setPage("progress")} style={{background:"#181818",border:"1px solid #252525",borderRadius:7,padding:"4px 11px",cursor:"pointer",fontSize:10,color:"#A78BFA",letterSpacing:1}}>📈 PROGRESS</button>
           <button onClick={()=>setShowCheckin(true)} style={{background:checkinDone?"#00FF8812":"#181818",border:`1px solid ${checkinDone?"#00FF8833":"#252525"}`,borderRadius:7,padding:"4px 11px",cursor:"pointer",fontSize:10,color:checkinDone?"#00FF88":"#555",letterSpacing:1}}>{checkinDone?"✓ CHECKED IN":"CHECK IN"}</button>
           <button onClick={()=>setEditMode(e=>!e)} style={{background:editMode?"#FF6B3522":"#181818",border:`1px solid ${editMode?"#FF6B3566":"#252525"}`,borderRadius:7,padding:"4px 11px",cursor:"pointer",fontSize:10,color:editMode?"#FF6B35":"#555",letterSpacing:1}}>{editMode?"✓ DONE EDITING":"✏ EDIT"}</button>
+          <button onClick={handleToggleDark} style={{background:"#181818",border:"1px solid #252525",borderRadius:7,padding:"4px 11px",cursor:"pointer",fontSize:10,color:"#555",letterSpacing:1}}>{darkMode?"☀":"🌙"}</button>
+          <button onClick={()=>setShowCheckinHistory(true)} style={{background:"#181818",border:"1px solid #252525",borderRadius:7,padding:"4px 11px",cursor:"pointer",fontSize:10,color:"#FFD700",letterSpacing:1}}>📊 METRICS</button>
+          <button onClick={handleExport} style={{background:"#181818",border:"1px solid #252525",borderRadius:7,padding:"4px 11px",cursor:"pointer",fontSize:10,color:"#555",letterSpacing:1}}>⬇ EXPORT</button>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {/* Week navigator */}
@@ -1090,7 +1199,7 @@ export default function App(){
       {(()=>{
         if(viewWeekOffset===0){
           return(
-            <div style={{padding:20,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
+            <div className="goal-grid" style={{padding:20,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
               {Object.keys(sections).map(key=>(
                 <GoalCard key={key} sectionKey={key} section={sections[key]}
                   checks={checks[key]||[]} onCheck={handleCheck}
@@ -1223,6 +1332,17 @@ export default function App(){
         );
       })()}
 
+      {/* Week note */}
+      {viewWeekOffset===0&&(
+        <div style={{padding:"0 20px 16px"}}>
+          <div style={{background:"#111",border:"1px solid #1e1e1e",borderRadius:12,padding:14,display:"flex",gap:10,alignItems:"flex-start"}}>
+            <span style={{fontSize:11,color:"#444",marginTop:2,flexShrink:0}}>📝</span>
+            <textarea value={weekNote} onChange={e=>setWeekNote(e.target.value)} onBlur={e=>handleSaveNote(e.target.value)} placeholder="Week notes — wins, blockers, context for your future self..." rows={2}
+              style={{flex:1,background:"transparent",border:"none",color:"#888",fontSize:11,outline:"none",fontFamily:"inherit",resize:"none",lineHeight:1.6}}/>
+          </div>
+        </div>
+      )}
+
       {/* Schedule */}
       <ScheduleSection sched={sched} onUpdate={handleUpdateSched} editMode={editMode} weeklyGoals={weeklyGoals} onUpdateGoals={handleWeeklyGoals} onAddWeeklyTarget={handleAddWeeklyTarget}/>
 
@@ -1255,7 +1375,7 @@ function MilestoneSection({milestones,onUpdate}){
   const [newCat,setNewCat]=useState("business");
 
   const cats={business:{color:"#00FF88",icon:"◈"},fatLoss:{color:"#FF6B35",icon:"◉"},savings:{color:"#FFD700",icon:"◆"},social:{color:"#A78BFA",icon:"◍"}};
-  const toggle=(id)=>onUpdate(milestones.map(m=>m.id===id?{...m,done:!m.done}:m));
+  const toggle=(id)=>onUpdate(milestones.map(m=>m.id===id?{...m,done:!m.done,...(!m.done?{completedWeek:Math.ceil(((new Date()-new Date(new Date().getFullYear(),0,1))/86400000+1)/7)}:{completedWeek:undefined})}:m));
   const del=(id)=>onUpdate(milestones.filter(m=>m.id!==id));
   const add=()=>{
     if(!newLabel.trim())return;
@@ -1364,7 +1484,7 @@ function WeekReviewPage({history,checkins,sections,onBack,currentWeekNum,current
   const sectionKeys=Object.keys(sections||DEFAULT_SECTIONS);
 
   return(
-    <div style={{minHeight:"100vh",background:"#0a0a0a",color:"#fff",fontFamily:"'DM Mono',monospace"}}>
+    <div style={{minHeight:"100vh",background:darkMode?"#0a0a0a":"#f4f4f0",color:darkMode?"#fff":"#111",fontFamily:"'DM Mono',monospace",transition:"background 0.3s"}}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&display=swap');*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}body{background:#0a0a0a;}`}</style>
 
       {/* Header */}
@@ -1703,5 +1823,136 @@ function FutureWeekCards({sections,offWkNum,offKey,history,persist,checks,actual
         })}
       </div>
     </>
+  );
+}
+
+// ─── End-of-Week Modal ────────────────────────────────────────────────────────
+function EndOfWeekModal({weekNum,weekKey,history,sections,note,onSaveNote,onClose}){
+  const [localNote,setLocalNote]=useState(note||"");
+  const wd=history[weekKey];
+  const COLORS={business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA"};
+  const sectionKeys=Object.keys(sections||DEFAULT_SECTIONS);
+  const pcts=sectionKeys.map(sec=>{
+    const c=wd?.checks?.[sec]||[]; const a=wd?.actuals?.[sec]||[];
+    const snap=wd?.sectionSnapshot?.[sec]||sections[sec]||DEFAULT_SECTIONS[sec];
+    const total=(snap?.daily?.length||4)+(snap?.weekly?.length||4);
+    const done=c.filter(Boolean).length+(snap?.weekly||[]).filter((w,i)=>{const v=a[i];return v!==null&&v!==undefined&&v>=w.target;}).length;
+    return total>0?Math.round((done/total)*100):0;
+  });
+  const overall=pcts.length>0?Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length):0;
+  const oc=overall>=75?"#00FF88":overall>=50?"#FFD700":"#FF6B35";
+  const save=()=>{if(localNote!==note)onSaveNote(localNote);onClose();};
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000e",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#141414",border:"1px solid #2a2a2a",borderRadius:20,padding:28,width:"min(420px,96vw)",maxHeight:"90vh",overflow:"auto"}}>
+        <p style={{fontSize:9,color:"#555",letterSpacing:2,margin:"0 0 4px"}}>WEEK {weekNum} CLOSE-OUT</p>
+        <p style={{fontFamily:"'Bebas Neue',cursive",fontSize:26,color:"#fff",letterSpacing:1,margin:"0 0 4px"}}>End of Week</p>
+        <p style={{fontSize:11,color:"#555",margin:"0 0 20px"}}>Sunday — time to close the loop</p>
+
+        {/* Score summary */}
+        <div style={{background:"#1a1a1a",borderRadius:14,padding:16,marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
+          <div>
+            <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:2}}>THIS WEEK</div>
+            <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:48,color:oc,letterSpacing:2,lineHeight:1}}>{overall}%</div>
+          </div>
+          <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {sectionKeys.map((sec,i)=>(
+              <div key={sec}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                  <span style={{fontSize:9,color:COLORS[sec]}}>{sections[sec]?.label||sec}</span>
+                  <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:12,color:COLORS[sec]}}>{pcts[i]}%</span>
+                </div>
+                <div style={{height:3,background:"#252525",borderRadius:2,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${pcts[i]}%`,background:COLORS[sec]}}/>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Week note */}
+        <div style={{marginBottom:20}}>
+          <label style={{fontSize:10,color:"#555",letterSpacing:1,display:"block",marginBottom:8}}>WEEK NOTES — wins, blockers, what to carry forward</label>
+          <textarea value={localNote} onChange={e=>setLocalNote(e.target.value)} placeholder="e.g. Landed first discovery call. Missed gym Tue/Thu due to work travel. Next week: prioritise morning workouts." rows={4}
+            style={{width:"100%",background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:10,padding:"12px 14px",color:"#fff",fontSize:12,outline:"none",fontFamily:"inherit",resize:"none",lineHeight:1.6}}/>
+        </div>
+
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onClose} style={{flex:1,padding:"12px 0",borderRadius:10,border:"1px solid #2a2a2a",background:"#1a1a1a",color:"#555",fontSize:11,cursor:"pointer",letterSpacing:1}}>SKIP</button>
+          <button onClick={save} style={{flex:2,padding:"12px 0",borderRadius:10,border:"1px solid #00FF8855",background:"#00FF8820",color:"#00FF88",fontFamily:"'Bebas Neue',cursive",fontSize:17,cursor:"pointer",letterSpacing:2}}>CLOSE OUT WEEK →</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Check-in History Modal ───────────────────────────────────────────────────
+function CheckinHistoryModal({checkins,onClose}){
+  const entries=Object.entries(checkins).sort((a,b)=>a[0].localeCompare(b[0]));
+  const fields=[
+    {key:"business",label:"Revenue",color:"#00FF88",format:v=>`£${Number(v).toLocaleString()}`},
+    {key:"fatLoss",label:"Weight",color:"#FF6B35",format:v=>`${v}kg`},
+    {key:"savings",label:"Savings",color:"#FFD700",format:v=>`£${Number(v).toLocaleString()}`},
+    {key:"social",label:"Followers",color:"#A78BFA",format:v=>`${v}`},
+  ];
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000d",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#111",border:"1px solid #2a2a2a",borderRadius:18,padding:24,width:"min(720px,96vw)",maxHeight:"85vh",overflow:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <div><div style={{fontFamily:"'Bebas Neue',cursive",fontSize:22,color:"#fff",letterSpacing:2}}>METRIC HISTORY</div><div style={{fontSize:9,color:"#444",letterSpacing:1}}>{entries.length} check-ins recorded</div></div>
+          <button onClick={onClose} style={{background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:8,color:"#666",padding:"7px 14px",cursor:"pointer",fontSize:10}}>CLOSE</button>
+        </div>
+        {entries.length===0?(
+          <div style={{textAlign:"center",padding:48,color:"#444",fontSize:11}}>No check-ins yet — use the CHECK IN button each Monday</div>
+        ):(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+              <thead>
+                <tr>
+                  <th style={{textAlign:"left",padding:"6px 12px",fontSize:9,color:"#444",letterSpacing:2,borderBottom:"1px solid #1e1e1e"}}>WEEK</th>
+                  {fields.map(f=><th key={f.key} style={{textAlign:"right",padding:"6px 12px",fontSize:9,color:f.color,letterSpacing:2,borderBottom:"1px solid #1e1e1e"}}>{f.label.toUpperCase()}</th>)}
+                  <th style={{textAlign:"right",padding:"6px 12px",fontSize:9,color:"#444",letterSpacing:2,borderBottom:"1px solid #1e1e1e"}}>VS TARGET</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map(([key,ci],rowIdx)=>{
+                  const wkNum=ci.weekNum||0;
+                  const dateStr=key.replace("yz-week-","");
+                  const prev=rowIdx>0?entries[rowIdx-1][1]:null;
+                  return(
+                    <tr key={key} style={{borderBottom:"1px solid #151515"}}>
+                      <td style={{padding:"9px 12px",color:"#888"}}>
+                        <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:14,letterSpacing:1}}>WK {wkNum}</div>
+                        <div style={{fontSize:9,color:"#444"}}>{new Date(dateStr).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</div>
+                      </td>
+                      {fields.map(f=>{
+                        const val=ci[f.key]; const prevVal=prev?.[f.key];
+                        const delta=val!==null&&val!==undefined&&prevVal!==null&&prevVal!==undefined?val-prevVal:null;
+                        const traj=TRAJECTORIES[f.key]?.(wkNum);
+                        const onTrack=val!==null&&val!==undefined&&traj!==undefined?(f.key==="fatLoss"?val<=traj*1.02:val>=traj*0.98):null;
+                        return(
+                          <td key={f.key} style={{padding:"9px 12px",textAlign:"right"}}>
+                            <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:16,color:f.color,letterSpacing:1}}>{val!==null&&val!==undefined?f.format(val):"—"}</div>
+                            {delta!==null&&<div style={{fontSize:9,color:delta>0?(f.key==="fatLoss"?"#FF6B35":"#00FF88"):delta<0?(f.key==="fatLoss"?"#00FF88":"#FF6B35"):"#555"}}>{delta>0?"+":""}{f.key==="fatLoss"?delta.toFixed(1):Math.round(delta)}</div>}
+                          </td>
+                        );
+                      })}
+                      <td style={{padding:"9px 12px",textAlign:"right"}}>
+                        {[...fields].map(f=>{
+                          const val=ci[f.key]; if(val===null||val===undefined) return null;
+                          const traj=TRAJECTORIES[f.key]?.(wkNum);
+                          const onTrack=f.key==="fatLoss"?val<=traj*1.02:val>=traj*0.98;
+                          return <div key={f.key} style={{fontSize:9,color:onTrack?"#00FF88":"#FF6B35"}}>{onTrack?"✓":"⚠"} {f.label}</div>;
+                        })}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
