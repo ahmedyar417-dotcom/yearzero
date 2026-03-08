@@ -462,39 +462,53 @@ function InputModal({item,color,onSave,onClose}){
 
 // ─── Week Card ────────────────────────────────────────────────────────────────
 function WeekCard({item,color,onClick,editMode,onDelete,onRenameLabel}){
-  const hasData=item.actual!==null&&item.actual!==undefined; const isCheck=item.type==="check";
-  const pct=hasData?Math.min(Math.round((item.actual/item.target)*100),100):0; const hit=hasData&&item.actual>=item.target; const dc=hit?"#00FF88":color;
-  return(
-    <div style={{position:"relative"}}>
-      {editMode&&<button onClick={onDelete} style={{position:"absolute",top:-7,right:-7,zIndex:10,width:20,height:20,borderRadius:"50%",background:"#FF6B3522",border:"1px solid #FF6B3566",color:"#FF6B35",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>}
-      <div style={{position:"relative",overflow:"hidden",background:hasData&&!editMode?color+"08":"#181818",borderRadius:10,padding:"10px 12px",border:`1px solid ${editMode?color+"30":hasData?color+"40":"#242424"}`,opacity:editMode?0.85:1}}>
-        {hasData&&!editMode&&<div style={{position:"absolute",inset:0,width:`${pct}%`,background:`linear-gradient(90deg,${color}14,transparent)`,pointerEvents:"none"}}/>}
-        <div style={{position:"relative"}}>
-          {editMode ? (
-            <InlineEdit value={item.label} onSave={onRenameLabel}
-              style={{fontSize:10,color:"#777",display:"block",marginBottom:3}}
-              inputStyle={{fontSize:10,width:"100%"}}/>
-          ) : (
-            <div style={{fontSize:10,color:"#555",marginBottom:3}}>{item.label}</div>
-          )}
-          {hasData&&!editMode?(
-            <>
-              <div style={{display:"flex",alignItems:"baseline",gap:6}}>
-                <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:20,color:dc,letterSpacing:1}}>{isCheck?(item.actual===1?"✓ DONE":"✗ PENDING"):item.actual}{!isCheck&&<span style={{fontSize:9,color:"#444",marginLeft:5}}>{item.suffix}</span>}</div>
-                {item.delta!==null&&item.delta!==undefined&&!isCheck&&<span style={{fontSize:9,color:item.delta>0?"#00FF88":item.delta<0?"#FF6B35":"#555"}}>{item.delta>0?"+":""}{item.delta}</span>}
-              </div>
-              {!isCheck&&<div style={{marginTop:5,height:2,background:"#1e1e1e",borderRadius:1,overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:dc}}/></div>}
-            </>
-          ):!editMode?(
-            <button onClick={onClick} style={{background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"left",width:"100%"}}>
-              <div style={{fontSize:11,color:"#383838"}}>{`tap to log ${item.suffix}`}</div>
-            </button>
-          ):(
-            <div style={{fontSize:11,color:"#555"}}>{item.suffix}</div>
-          )}
+  const hasData=item.actual!==null&&item.actual!==undefined;
+  const isCheck=item.type==="check";
+  const pct=hasData?Math.min(Math.round((item.actual/item.target)*100),100):0;
+  const hit=hasData&&item.actual>=item.target;
+  const dc=hit?"#00FF88":color;
+
+  if(editMode){
+    return(
+      <div style={{position:"relative"}}>
+        <button onClick={onDelete} style={{position:"absolute",top:-7,right:-7,zIndex:10,width:20,height:20,borderRadius:"50%",background:"#FF6B3522",border:"1px solid #FF6B3566",color:"#FF6B35",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
+        <div style={{background:"#181818",borderRadius:10,padding:"10px 12px",border:`1px solid ${color}30`,opacity:0.85}}>
+          <InlineEdit value={item.label} onSave={onRenameLabel}
+            style={{fontSize:10,color:"#777",display:"block",marginBottom:3}}
+            inputStyle={{fontSize:10,width:"100%"}}/>
+          <div style={{fontSize:11,color:"#555"}}>{item.suffix}</div>
         </div>
       </div>
-    </div>
+    );
+  }
+
+  return(
+    <button
+      onClick={onClick}
+      style={{display:"block",width:"100%",textAlign:"left",position:"relative",overflow:"hidden",
+        background:hasData?color+"08":"#181818",borderRadius:10,padding:"10px 12px",
+        border:`1px solid ${hasData?color+"40":"#242424"}`,cursor:"pointer"}}
+    >
+      {hasData&&<div style={{position:"absolute",inset:0,width:`${pct}%`,background:`linear-gradient(90deg,${color}14,transparent)`,pointerEvents:"none"}}/>}
+      <div style={{position:"relative"}}>
+        <div style={{fontSize:10,color:"#555",marginBottom:3}}>{item.label}</div>
+        {hasData ? (
+          <>
+            <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+              <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:20,color:dc,letterSpacing:1}}>
+                {isCheck?(item.actual===1?"✓ DONE":"✗ PENDING"):item.actual}
+                {!isCheck&&<span style={{fontSize:9,color:"#444",marginLeft:5}}>{item.suffix}</span>}
+              </div>
+              {item.delta!==null&&item.delta!==undefined&&!isCheck&&<span style={{fontSize:9,color:item.delta>0?"#00FF88":item.delta<0?"#FF6B35":"#555"}}>{item.delta>0?"+":""}{item.delta}</span>}
+            </div>
+            {!isCheck&&<div style={{marginTop:5,height:2,background:"#1e1e1e",borderRadius:1,overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:dc}}/></div>}
+            <div style={{fontSize:9,color:"#333",marginTop:3}}>tap to update</div>
+          </>
+        ):(
+          <div style={{fontSize:11,color:"#383838"}}>tap to log {item.suffix}</div>
+        )}
+      </div>
+    </button>
   );
 }
 
