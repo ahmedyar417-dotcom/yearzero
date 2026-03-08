@@ -727,7 +727,7 @@ function AddGoalToWeekModal({sections,onSave,onClose}){
     const m=isCheck?1:parseFloat(max)||t*3;
     const u=isCheck?"done":(unit.trim()||"count");
     const item={label:taskLabel,min:0,max:m,target:t,unit:u,suffix:`/ ${t}`,key:uid(),...(isCheck?{type:"check"}:{})};
-    onSave(cat,item);
+    onSave(cat,item,wk);
     onClose();
   };
 
@@ -800,7 +800,7 @@ function AddGoalToWeekModal({sections,onSave,onClose}){
 }
 
 // ─── Schedule Section ─────────────────────────────────────────────────────────
-function ScheduleSection({sched,onUpdate,editMode,onAddWeeklyTarget,sections}){
+function ScheduleSection({sched,onUpdate,editMode,onAddWeeklyTarget,sections,weeklyGoals=[],onUpdateGoals}){
   const [addingTo,setAddingTo]=useState(null);
   const [newBlock,setNewBlock]=useState("");
   const [showAddGoal,setShowAddGoal]=useState(false);
@@ -810,11 +810,34 @@ function ScheduleSection({sched,onUpdate,editMode,onAddWeeklyTarget,sections}){
 
   return(
     <div style={{padding:"0 20px 24px"}}>
-      {showAddGoal&&<AddGoalToWeekModal sections={sections||{}} onSave={(cat,item)=>{if(onAddWeeklyTarget)onAddWeeklyTarget(cat,item);}} onClose={()=>setShowAddGoal(false)}/>}
+      {showAddGoal&&<AddGoalToWeekModal sections={sections||{}} onSave={(cat,item,wk)=>{if(onAddWeeklyTarget)onAddWeeklyTarget(cat,item,wk);}} onClose={()=>setShowAddGoal(false)}/>}
       <div style={{borderTop:"1px solid #1a1a1a",paddingTop:18,marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <span style={{fontSize:9,color:"#444",letterSpacing:2}}>WEEKLY SCHEDULE TEMPLATE</span>
         <button onClick={()=>setShowAddGoal(true)} style={{padding:"4px 12px",borderRadius:7,border:"1px solid #00FF8844",background:"#00FF8810",color:"#00FF88",fontSize:10,cursor:"pointer",letterSpacing:1}}>+ ADD WEEKLY TASK</button>
       </div>
+      {weeklyGoals.length>0&&(
+        <div style={{background:"#111",border:"1px solid #1e1e1e",borderRadius:12,padding:"12px 16px",marginBottom:12}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <span style={{fontSize:9,color:"#444",letterSpacing:2}}>WEEKLY GOALS</span>
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {weeklyGoals.map((g,i)=>{
+              const gText=typeof g==="string"?g:g.text;
+              const gCat=typeof g==="string"?"business":g.cat||"business";
+              const catColors={business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA",deen:"#4ADE80"};
+              const catIcons={business:"◈",fatLoss:"◉",savings:"◆",social:"◍",deen:"☽"};
+              const chipColor=catColors[gCat]||"#00FF88";
+              return(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:5,background:"#181818",border:`1px solid ${chipColor}33`,borderRadius:8,padding:"5px 10px"}}>
+                  <span style={{fontSize:9,color:chipColor}}>{catIcons[gCat]||"◈"}</span>
+                  <span style={{fontSize:11,color:"#bbb"}}>{gText}</span>
+                  {editMode&&<button onClick={()=>onUpdateGoals&&onUpdateGoals(weeklyGoals.filter((_,j)=>j!==i))} style={{width:14,height:14,background:"none",border:"none",color:"#444",fontSize:13,cursor:"pointer",padding:0,lineHeight:1,marginLeft:4}}>×</button>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
         {sched.map(day=>(
           <div key={day.id} style={{background:"#111",border:`1px solid ${editMode?day.color+"44":day.color+"20"}`,borderRadius:12,padding:16}}>
@@ -1329,7 +1352,17 @@ export default function App(){
     setWarMapChecked(next);
     ls.set('yz-wm-checked-'+getActiveDayKey(),next);
   };
-  const handleAddWeeklyTarget=(secKey,item)=>{ const sec=sections[secKey]; if(!sec)return; handleUpdateSection(secKey,{...sec,weekly:[...sec.weekly,item]}); };
+  const handleAddWeeklyTarget=(secKey,item,wk)=>{
+    const sec=sections[secKey]; if(!sec)return;
+    if(wk){
+      // Week specified → add directly to goal card weekly targets
+      handleUpdateSection(secKey,{...sec,weekly:[...sec.weekly,item]});
+    } else {
+      // No week → keep in weekly goals strip
+      const newGoals=[...weeklyGoals,{text:item.label,cat:secKey}];
+      handleWeeklyGoals(newGoals);
+    }
+  };
 
   // Daily progress
   const allDaily=Object.keys(sections).flatMap(k=>(checks[k]||[]));
@@ -1591,7 +1624,7 @@ export default function App(){
         </div>
       )}
 
-      <ScheduleSection sched={sched} onUpdate={handleUpdateSched} editMode={editMode} onAddWeeklyTarget={handleAddWeeklyTarget} sections={sections}/>
+      <ScheduleSection sched={sched} onUpdate={handleUpdateSched} editMode={editMode} onAddWeeklyTarget={handleAddWeeklyTarget} sections={sections} weeklyGoals={weeklyGoals} onUpdateGoals={handleWeeklyGoals}/>
       <MilestoneSection milestones={milestones} onUpdate={handleMilestones}/>
       <CalendarSection/>
 
