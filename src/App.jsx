@@ -1173,8 +1173,20 @@ export default function App(){
     }
     return DEFAULT_SECTIONS;
   });
-  const [checks,setChecks]=useState(()=>ls.get(getDayKey())?.checks||emptyChecks(ls.get("yz-sections")||DEFAULT_SECTIONS));
-  const [actuals,setActuals]=useState(()=>emptyActuals(ls.get("yz-sections")||DEFAULT_SECTIONS));
+  const [checks,setChecks]=useState(()=>{
+    const savedSecs=ls.get("yz-sections")||DEFAULT_SECTIONS;
+    const fullSecs={...DEFAULT_SECTIONS,...savedSecs,deen:savedSecs.deen||DEFAULT_SECTIONS.deen};
+    const saved=ls.get(getDayKey())?.checks||{};
+    const empty=emptyChecks(fullSecs);
+    return {...empty,...saved};
+  });
+  const [actuals,setActuals]=useState(()=>{
+    const savedSecs=ls.get("yz-sections")||DEFAULT_SECTIONS;
+    const fullSecs={...DEFAULT_SECTIONS,...savedSecs,deen:savedSecs.deen||DEFAULT_SECTIONS.deen};
+    const saved=ls.get(getWeekKey())?.actuals||{};
+    const empty=emptyActuals(fullSecs);
+    return {...empty,...saved};
+  });
   const [sched,setSched]=useState(()=>ls.get("yz-sched")||DEFAULT_SCHED);
   const [history,setHistory]=useState({});
   const [checkins,setCheckins]=useState({});
@@ -1200,7 +1212,7 @@ export default function App(){
     const dd=ls.get(getDayKey());
     if(dd?.checks) setChecks(dd.checks);
     const wd=ls.get(WEEK_KEY);
-    if(wd?.actuals) setActuals(wd.actuals);
+    if(wd?.actuals) setActuals(a=>({...a,...wd.actuals}));
     if(wd?.notes) setWeekNote(wd.notes||'');
     setHistory(ls.get("yz-history")||{});
     const ci=ls.get("yz-checkins")||{};
@@ -1237,7 +1249,7 @@ export default function App(){
   },[history,WEEK_KEY,viewDayOffset]);
 
   const handleCheck=(sec,idx)=>{const next={...checks,[sec]:checks[sec].map((v,i)=>i===idx?!v:v)};setChecks(next);persist(next,actuals,sections);};
-  const handleSave=(sec,idx,val)=>{const next={...actuals,[sec]:actuals[sec].map((v,i)=>i===idx?val:v)};setActuals(next);persist(checks,next,sections);};
+  const handleSave=(sec,idx,val)=>{const base=actuals[sec]||sections[sec].weekly.map(()=>null);const next={...actuals,[sec]:base.map((v,i)=>i===idx?val:v)};setActuals(next);persist(checks,next,sections);};
   const handleUpdateSection=(secKey,newSection)=>{
     const newSections={...sections,[secKey]:newSection}; setSections(newSections); ls.set("yz-sections",newSections);
     const newChecks={...checks,[secKey]:newSection.daily.map((_,i)=>checks[secKey]?.[i]||false)};
