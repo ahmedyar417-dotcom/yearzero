@@ -1296,6 +1296,7 @@ export default function App(){
     setCheckins(ci);
     if(!ci[WEEK_KEY]) setTimeout(()=>setShowCheckin(true),800);
     const wm=ls.get(getWarMapKey(getWeekKey()))||{}; setWarMap(wm);
+    if(!ls.get('yz-last-seen-week')) ls.set('yz-last-seen-week',getWeekKey());
     const wmc=ls.get('yz-wm-checked-'+getDayKey())||{}; setWarMapChecked(wmc);
     const todayDay=new Date().getDay();
     const eowKey='yz-eow-'+getWeekKey();
@@ -1308,6 +1309,20 @@ export default function App(){
     setChecks(dd?.checks||emptyChecks(sections));
     const wmc=ls.get('yz-wm-checked-'+key)||{};
     setWarMapChecked(wmc);
+
+    // Auto-reset weekly actuals when crossing into a new week
+    const viewedWeekKey=(()=>{
+      const d=new Date(); d.setDate(d.getDate()+viewDayOffset); d.setHours(0,0,0,0);
+      d.setDate(d.getDate()-((d.getDay()+6)%7));
+      return 'yz-week-'+d.toISOString().slice(0,10);
+    })();
+    const lastSeenWeek=ls.get('yz-last-seen-week');
+    if(lastSeenWeek && lastSeenWeek!==viewedWeekKey){
+      const fresh=emptyActuals(sections);
+      const saved=ls.get(viewedWeekKey)?.actuals||{};
+      setActuals({...fresh,...saved});
+    }
+    ls.set('yz-last-seen-week',viewedWeekKey);
   },[viewDayOffset]);
 
   const flash=()=>{setSaveFlash(true);setTimeout(()=>setSaveFlash(false),1400);};
