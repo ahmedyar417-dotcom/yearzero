@@ -12,7 +12,6 @@ const getWeekKey = () => {
   return `yz-week-${d.toISOString().slice(0,10)}`;
 };
 
-// ─── Daily key (per-day checks, resets each day) ──────────────────────────────
 const getDayKey = (d = new Date()) => {
   const dt = new Date(d); dt.setHours(0,0,0,0);
   return `yz-day-${dt.toISOString().slice(0,10)}`;
@@ -39,8 +38,8 @@ const DAY_LABELS = ["MON","TUE","WED","THU","FRI","SAT","SUN"];
 function getWarMapKey(weekKey) { return "yz-wm-" + weekKey; }
 
 function getTodayDayIdx() {
-  const d = new Date().getDay(); // 0=Sun
-  return d === 0 ? 6 : d - 1;   // mon=0
+  const d = new Date().getDay();
+  return d === 0 ? 6 : d - 1;
 }
 
 // ─── Streak helpers ───────────────────────────────────────────────────────────
@@ -95,12 +94,14 @@ const TRAJECTORIES = {
   fatLoss:  (wk) => Math.max(85, 102 - (wk * (17/52))),
   savings:  (wk) => Math.round(15000 + (wk/52)*85000),
   social:   (wk) => Math.round((wk/52)*5000),
+  deen:     (wk) => Math.min(100, Math.round((wk/52)*100)),
 };
 const GOAL_META = {
   business: { label:"Monthly Revenue", unit:"£", start:0,     end:15000,  format: v=>`£${v.toLocaleString()}`,  placeholder:"e.g. 1200" },
   fatLoss:  { label:"Body Weight",     unit:"kg",start:102,   end:85,     format: v=>`${v}kg`,                  placeholder:"e.g. 99.5" },
   savings:  { label:"Savings Balance", unit:"£", start:15000, end:100000, format: v=>`£${v.toLocaleString()}`,  placeholder:"e.g. 18000" },
   social:   { label:"X Followers",     unit:"",  start:0,     end:5000,   format: v=>`${v.toLocaleString()}`,   placeholder:"e.g. 47" },
+  deen:     { label:"Deen Score",      unit:"%", start:0,     end:100,    format: v=>`${v}%`,                   placeholder:"e.g. 75" },
 };
 
 // ─── Default goal sections ────────────────────────────────────────────────────
@@ -163,6 +164,21 @@ const DEFAULT_SECTIONS = {
       {label:"Reels / videos",min:0,max:10,target:3,unit:"videos",suffix:"/ 3",key:"w1"},
       {label:"Comments left",min:0,max:150,target:35,unit:"comments",suffix:"/ 35–70",key:"w2"},
       {label:"DMs sent",min:0,max:50,target:20,unit:"DMs",suffix:"/ 20",key:"w3"},
+    ],
+  },
+  deen: {
+    label:"Deen", color:"#4ADE80", icon:"☽", goal:"Become a better Muslim",
+    daily:[
+      {label:"5 daily prayers (Salah)",unit:"on time",key:"d0"},
+      {label:"Quran reading",unit:"pages",key:"d1"},
+      {label:"Morning/Evening Adhkar",unit:"done",key:"d2"},
+      {label:"No major sins (guard tongue/eyes)",unit:"rule",key:"d3"},
+    ],
+    weekly:[
+      {label:"Jumuah prayer",min:0,max:1,target:1,unit:"done",suffix:"/ 1",type:"check",key:"w0"},
+      {label:"Quran pages read",min:0,max:50,target:10,unit:"pages",suffix:"/ 10",key:"w1"},
+      {label:"Islamic study/lecture",min:0,max:7,target:2,unit:"sessions",suffix:"/ 2",key:"w2"},
+      {label:"Sadaqah given",min:0,max:1,target:1,unit:"done",suffix:"/ 1",type:"check",key:"w3"},
     ],
   },
 };
@@ -249,6 +265,60 @@ function getWeekDays(refDate) {
   return Array.from({length:7}, (_,i) => { const dd = new Date(monday); dd.setDate(monday.getDate()+i); return dd; });
 }
 
+// ─── Inline editable text ─────────────────────────────────────────────────────
+function InlineEdit({ value, onSave, style, inputStyle, multiline = false }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(value);
+  const ref = useRef(null);
+
+  useEffect(() => { if (editing && ref.current) ref.current.focus(); }, [editing]);
+
+  const save = () => {
+    const trimmed = val.trim();
+    if (trimmed && trimmed !== value) onSave(trimmed);
+    else setVal(value);
+    setEditing(false);
+  };
+
+  const onKey = (e) => {
+    if (e.key === "Enter" && !multiline) { e.preventDefault(); save(); }
+    if (e.key === "Escape") { setVal(value); setEditing(false); }
+  };
+
+  if (!editing) {
+    return (
+      <span
+        onClick={() => { setVal(value); setEditing(true); }}
+        title="Click to edit"
+        style={{ cursor: "text", borderBottom: "1px dashed transparent", ...style,
+          ":hover": { borderBottomColor: "#444" } }}
+        onMouseEnter={e => e.currentTarget.style.borderBottom = "1px dashed #444"}
+        onMouseLeave={e => e.currentTarget.style.borderBottom = "1px dashed transparent"}
+      >
+        {value}
+      </span>
+    );
+  }
+
+  if (multiline) {
+    return (
+      <textarea ref={ref} value={val} onChange={e => setVal(e.target.value)}
+        onBlur={save} onKeyDown={onKey} rows={2}
+        style={{ background: "#1a1a1a", border: "1px solid #555", borderRadius: 6,
+          padding: "3px 7px", color: "#fff", fontSize: "inherit", fontFamily: "inherit",
+          resize: "none", outline: "none", width: "100%", ...inputStyle }} />
+    );
+  }
+
+  return (
+    <input ref={ref} value={val} onChange={e => setVal(e.target.value)}
+      onBlur={save} onKeyDown={onKey}
+      style={{ background: "#1a1a1a", border: "1px solid #555", borderRadius: 6,
+        padding: "3px 7px", color: "#fff", fontSize: "inherit", fontFamily: "inherit",
+        outline: "none", width: "100%", ...inputStyle }} />
+  );
+}
+
 // ─── Ring ─────────────────────────────────────────────────────────────────────
 function Ring({pct,color,size=60}){
   const r=(size-8)/2,circ=2*Math.PI*r,dash=Math.min(pct/100,1)*circ;
@@ -263,25 +333,28 @@ function Ring({pct,color,size=60}){
 }
 
 // ─── CheckRow ─────────────────────────────────────────────────────────────────
-function CheckRow({label,done,color,onToggle,editMode,onDelete,streak,onRename}){
-  const [editing,setEditing]=useState(false);
-  const [val,setVal]=useState(label);
-  const save=()=>{ if(val.trim()&&onRename) onRename(val.trim()); setEditing(false); };
+function CheckRow({label,unit,done,color,onToggle,editMode,onDelete,streak,onRenameLabel,onRenameUnit}){
   return(
     <div style={{display:"flex",alignItems:"center",gap:6,padding:"3px 0"}}>
       {editMode&&<button onClick={onDelete} style={{width:20,height:20,borderRadius:"50%",background:"#FF6B3522",border:"1px solid #FF6B3566",color:"#FF6B35",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1}}>×</button>}
-      <button onClick={editMode?undefined:onToggle} style={{display:"flex",alignItems:"center",gap:10,background:"none",border:"none",cursor:editMode?"default":"pointer",padding:"2px 0",flex:1,textAlign:"left",opacity:editMode&&!editing?0.6:1}}>
+      <button onClick={editMode?undefined:onToggle} style={{display:"flex",alignItems:"center",gap:10,background:"none",border:"none",cursor:editMode?"default":"pointer",padding:"2px 0",flex:1,textAlign:"left"}}>
         <span style={{width:18,height:18,borderRadius:4,border:`2px solid ${done?color:"#3a3a3a"}`,background:done?color+"22":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.18s",boxShadow:done?`0 0 7px ${color}55`:"none"}}>
           {done&&<span style={{color,fontSize:11,fontWeight:900,lineHeight:1}}>✓</span>}
         </span>
-        {editMode&&editing?(
-          <input value={val} onChange={e=>setVal(e.target.value)} onBlur={save} onKeyDown={e=>{if(e.key==="Enter")save();if(e.key==="Escape")setEditing(false);}} autoFocus onClick={e=>e.stopPropagation()}
-            style={{flex:1,background:"#1a1a1a",border:`1px solid ${color}44`,borderRadius:6,padding:"3px 8px",color:"#fff",fontSize:12,outline:"none",fontFamily:"inherit"}}/>
-        ):(
-          <span style={{fontSize:13,color:done?"#444":"#bbb",textDecoration:done?"line-through":"none",letterSpacing:0.2,flex:1}}>{label}</span>
+        {editMode ? (
+          <span style={{flex:1,display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+            <InlineEdit value={label} onSave={onRenameLabel}
+              style={{fontSize:13,color:"#bbb"}}
+              inputStyle={{fontSize:12,width:160}}/>
+            <span style={{color:"#333",fontSize:11}}>·</span>
+            <InlineEdit value={unit} onSave={onRenameUnit}
+              style={{fontSize:11,color:"#555"}}
+              inputStyle={{fontSize:11,width:60}}/>
+          </span>
+        ) : (
+          <span style={{fontSize:13,color:done?"#444":"#bbb",textDecoration:done?"line-through":"none",letterSpacing:0.2,flex:1}}>{label} · {unit}</span>
         )}
       </button>
-      {editMode&&!editing&&<button onClick={()=>{setEditing(true);setVal(label);}} style={{fontSize:9,color:"#444",background:"none",border:"none",cursor:"pointer",padding:"0 4px",flexShrink:0}}>✏</button>}
       {!editMode&&streak>1&&<span style={{fontSize:9,color:"#FF9500",flexShrink:0}}>🔥{streak}</span>}
     </div>
   );
@@ -388,16 +461,22 @@ function InputModal({item,color,onSave,onClose}){
 }
 
 // ─── Week Card ────────────────────────────────────────────────────────────────
-function WeekCard({item,color,onClick,editMode,onDelete}){
+function WeekCard({item,color,onClick,editMode,onDelete,onRenameLabel}){
   const hasData=item.actual!==null&&item.actual!==undefined; const isCheck=item.type==="check";
   const pct=hasData?Math.min(Math.round((item.actual/item.target)*100),100):0; const hit=hasData&&item.actual>=item.target; const dc=hit?"#00FF88":color;
   return(
     <div style={{position:"relative"}}>
       {editMode&&<button onClick={onDelete} style={{position:"absolute",top:-7,right:-7,zIndex:10,width:20,height:20,borderRadius:"50%",background:"#FF6B3522",border:"1px solid #FF6B3566",color:"#FF6B35",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>}
-      <button onClick={editMode?undefined:onClick} style={{position:"relative",overflow:"hidden",background:hasData?color+"08":"#181818",borderRadius:10,padding:"10px 12px",border:`1px solid ${editMode?color+"30":hasData?color+"40":"#242424"}`,cursor:editMode?"default":"pointer",textAlign:"left",width:"100%",opacity:editMode?0.7:1}}>
+      <div style={{position:"relative",overflow:"hidden",background:hasData&&!editMode?color+"08":"#181818",borderRadius:10,padding:"10px 12px",border:`1px solid ${editMode?color+"30":hasData?color+"40":"#242424"}`,opacity:editMode?0.85:1}}>
         {hasData&&!editMode&&<div style={{position:"absolute",inset:0,width:`${pct}%`,background:`linear-gradient(90deg,${color}14,transparent)`,pointerEvents:"none"}}/>}
         <div style={{position:"relative"}}>
-          <div style={{fontSize:10,color:"#555",marginBottom:3}}>{item.label}</div>
+          {editMode ? (
+            <InlineEdit value={item.label} onSave={onRenameLabel}
+              style={{fontSize:10,color:"#777",display:"block",marginBottom:3}}
+              inputStyle={{fontSize:10,width:"100%"}}/>
+          ) : (
+            <div style={{fontSize:10,color:"#555",marginBottom:3}}>{item.label}</div>
+          )}
           {hasData&&!editMode?(
             <>
               <div style={{display:"flex",alignItems:"baseline",gap:6}}>
@@ -406,9 +485,15 @@ function WeekCard({item,color,onClick,editMode,onDelete}){
               </div>
               {!isCheck&&<div style={{marginTop:5,height:2,background:"#1e1e1e",borderRadius:1,overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:dc}}/></div>}
             </>
-          ):(<div style={{fontSize:11,color:editMode?"#555":"#383838"}}>{editMode?item.suffix:`tap to log ${item.suffix}`}</div>)}
+          ):!editMode?(
+            <button onClick={onClick} style={{background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"left",width:"100%"}}>
+              <div style={{fontSize:11,color:"#383838"}}>{`tap to log ${item.suffix}`}</div>
+            </button>
+          ):(
+            <div style={{fontSize:11,color:"#555"}}>{item.suffix}</div>
+          )}
         </div>
-      </button>
+      </div>
     </div>
   );
 }
@@ -425,7 +510,6 @@ function WarMapPlanner({ weekKey, sections, warMap, onSave, onClose }) {
   const weekDate = weekKey.replace("yz-week-", "");
   const monday = new Date(weekDate);
 
-  // Collect all core tasks across sections with their colors
   const coreTasks = [];
   Object.values(sections).forEach(s => {
     s.daily.forEach(item => {
@@ -445,8 +529,6 @@ function WarMapPlanner({ weekKey, sections, warMap, onSave, onClose }) {
   return (
     <div style={{ position:"fixed", inset:0, background:"#050505", zIndex:10000, display:"flex", flexDirection:"column", fontFamily:"'DM Mono',monospace" }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&display=swap'); *{box-sizing:border-box;margin:0;padding:0;} button{font-family:inherit;} textarea{font-family:inherit;}`}</style>
-
-      {/* Header */}
       <div style={{ borderBottom:"1px solid #1a1a1a", padding:"12px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0, background:"#0a0a0a" }}>
         <div style={{ display:"flex", alignItems:"center", gap:14 }}>
           <button onClick={onClose} style={{ background:"#181818", border:"1px solid #252525", borderRadius:8, padding:"6px 14px", cursor:"pointer", color:"#888", fontSize:11, letterSpacing:1 }}>← BACK</button>
@@ -462,8 +544,6 @@ function WarMapPlanner({ weekKey, sections, warMap, onSave, onClose }) {
           <button onClick={save} style={{ padding:"9px 24px", borderRadius:10, border:"1px solid #00FF8855", background:"#00FF8820", color:"#00FF88", fontFamily:"'Bebas Neue',cursive", fontSize:16, cursor:"pointer", letterSpacing:2 }}>SAVE PLAN →</button>
         </div>
       </div>
-
-      {/* 7-col grid */}
       <div style={{ flex:1, overflowX:"auto", overflowY:"hidden", display:"flex" }}>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(7, minmax(185px, 1fr))", flex:1, minWidth:1295, height:"100%" }}>
           {DAY_KEYS.map((dk, di) => {
@@ -471,7 +551,6 @@ function WarMapPlanner({ weekKey, sections, warMap, onSave, onClose }) {
             const isToday = di === todayIdx;
             return (
               <div key={dk} style={{ borderRight: di < 6 ? "1px solid #1a1a1a" : "none", display:"flex", flexDirection:"column", height:"100%", background: isToday ? "#00FF8805" : "transparent" }}>
-                {/* Day header */}
                 <div style={{ padding:"10px 14px 8px", borderBottom:"1px solid #1a1a1a", flexShrink:0 }}>
                   <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
                     <span style={{ fontFamily:"'Bebas Neue',cursive", fontSize:18, color: isToday ? "#00FF88" : "#fff", letterSpacing:2 }}>{DAY_LABELS[di]}</span>
@@ -479,8 +558,6 @@ function WarMapPlanner({ weekKey, sections, warMap, onSave, onClose }) {
                   </div>
                   <div style={{ fontSize:9, color:"#444" }}>{dayDate.toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</div>
                 </div>
-
-                {/* Core tasks */}
                 <div style={{ padding:"8px 14px 4px", flexShrink:0 }}>
                   <div style={{ fontSize:8, color:"#2a2a2a", letterSpacing:2, marginBottom:5 }}>CORE · EVERY DAY</div>
                   {coreTasks.map((item, ci) => (
@@ -490,23 +567,12 @@ function WarMapPlanner({ weekKey, sections, warMap, onSave, onClose }) {
                     </div>
                   ))}
                 </div>
-
                 <div style={{ height:1, background:"#1a1a1a", margin:"6px 14px", flexShrink:0 }}/>
-
-                {/* Day-specific textarea */}
                 <div style={{ padding:"4px 14px 14px", flex:1, display:"flex", flexDirection:"column" }}>
                   <div style={{ fontSize:8, color:"#333", letterSpacing:2, marginBottom:6 }}>DAY-SPECIFIC</div>
-                  <textarea
-                    value={extras[dk]}
-                    onChange={e => setExtras(ex => ({ ...ex, [dk]: e.target.value }))}
+                  <textarea value={extras[dk]} onChange={e => setExtras(ex => ({ ...ex, [dk]: e.target.value }))}
                     placeholder={"e.g.\n3.4 workout\nSales call 2pm\nBatch content"}
-                    style={{
-                      flex:1, width:"100%", background:"#111", border:"1px solid #1e1e1e",
-                      borderRadius:8, padding:"8px 10px", color:"#ccc", fontSize:11,
-                      outline:"none", resize:"none", lineHeight:1.7, minHeight:140,
-                      caretColor:"#00FF88"
-                    }}
-                  />
+                    style={{ flex:1, width:"100%", background:"#111", border:"1px solid #1e1e1e", borderRadius:8, padding:"8px 10px", color:"#ccc", fontSize:11, outline:"none", resize:"none", lineHeight:1.7, minHeight:140, caretColor:"#00FF88" }}/>
                 </div>
               </div>
             );
@@ -523,6 +589,9 @@ function GoalCard({sectionKey,section,checks,onCheck,actuals,onSave,editMode,onU
   const dd=checks.filter(Boolean).length;
   const wh=section.weekly.filter((w,i)=>{const a=actuals[i];return a!==null&&a!==undefined&&a>=w.target;}).length;
   const pct=section.daily.length+section.weekly.length>0?Math.round(((dd+wh)/(section.daily.length+section.weekly.length))*100):0;
+
+  const updateField = (field, val) => onUpdateSection(sectionKey, { ...section, [field]: val });
+
   return(
     <>
       {modal!==null&&!editMode&&<InputModal item={{...section.weekly[modal],actual:actuals[modal]??0}} color={section.color} onSave={v=>{onSave(sectionKey,modal,v);setModal(null);}} onClose={()=>setModal(null)}/>}
@@ -532,12 +601,29 @@ function GoalCard({sectionKey,section,checks,onCheck,actuals,onSave,editMode,onU
         {editMode&&<div style={{position:"absolute",top:10,left:"50%",transform:"translateX(-50%)",background:section.color+"22",border:`1px solid ${section.color}44`,borderRadius:6,padding:"2px 10px",fontSize:9,color:section.color,letterSpacing:2,whiteSpace:"nowrap"}}>EDITING</div>}
         <div style={{position:"absolute",top:-30,right:-30,width:130,height:130,borderRadius:"50%",background:`radial-gradient(circle,${section.color}07 0%,transparent 70%)`,pointerEvents:"none"}}/>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginTop:editMode?16:0}}>
-          <div>
+          <div style={{flex:1,marginRight:12}}>
             <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3}}>
-              <span style={{color:section.color,fontSize:18}}>{section.icon}</span>
-              <span style={{color:section.color,fontSize:11,letterSpacing:2,textTransform:"uppercase"}}>{section.label}</span>
+              {editMode ? (
+                <InlineEdit value={section.icon} onSave={v=>updateField("icon",v)}
+                  style={{color:section.color,fontSize:18}} inputStyle={{width:40,fontSize:18,textAlign:"center"}}/>
+              ) : (
+                <span style={{color:section.color,fontSize:18}}>{section.icon}</span>
+              )}
+              {editMode ? (
+                <InlineEdit value={section.label} onSave={v=>updateField("label",v)}
+                  style={{color:section.color,fontSize:11,letterSpacing:2,textTransform:"uppercase"}}
+                  inputStyle={{fontSize:11,width:120}}/>
+              ) : (
+                <span style={{color:section.color,fontSize:11,letterSpacing:2,textTransform:"uppercase"}}>{section.label}</span>
+              )}
             </div>
-            <div style={{color:"#fff",fontFamily:"'Bebas Neue',cursive",fontSize:20,letterSpacing:1}}>{section.goal}</div>
+            {editMode ? (
+              <InlineEdit value={section.goal} onSave={v=>updateField("goal",v)}
+                style={{color:"#fff",fontFamily:"'Bebas Neue',cursive",fontSize:20,letterSpacing:1}}
+                inputStyle={{fontSize:16,fontFamily:"'Bebas Neue',cursive",width:"100%"}}/>
+            ) : (
+              <div style={{color:"#fff",fontFamily:"'Bebas Neue',cursive",fontSize:20,letterSpacing:1}}>{section.goal}</div>
+            )}
           </div>
           <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             <Ring pct={pct} color={section.color} size={60}/>
@@ -553,8 +639,19 @@ function GoalCard({sectionKey,section,checks,onCheck,actuals,onSave,editMode,onU
           </div>
           {section.daily.map((item,i)=>{
             const streak=history?calcStreak(history,sectionKey,i):0;
-            const rename=(newLabel)=>{const parts=newLabel.split("·");const lbl=parts[0].trim();const unt=parts.length>1?parts[1].trim():item.unit;onUpdateSection(sectionKey,{...section,daily:section.daily.map((d,j)=>j===i?{...d,label:lbl,unit:unt}:d)});};
-            return <CheckRow key={item.key} label={`${item.label} · ${item.unit}`} done={checks[i]||false} color={section.color} onToggle={()=>onCheck(sectionKey,i)} editMode={editMode} onDelete={()=>onUpdateSection(sectionKey,{...section,daily:section.daily.filter((_,j)=>j!==i)})} streak={streak} onRename={rename}/>;
+            return <CheckRow
+              key={item.key}
+              label={item.label}
+              unit={item.unit}
+              done={checks[i]||false}
+              color={section.color}
+              onToggle={()=>onCheck(sectionKey,i)}
+              editMode={editMode}
+              onDelete={()=>onUpdateSection(sectionKey,{...section,daily:section.daily.filter((_,j)=>j!==i)})}
+              streak={streak}
+              onRenameLabel={(newLabel)=>onUpdateSection(sectionKey,{...section,daily:section.daily.map((d,j)=>j===i?{...d,label:newLabel}:d)})}
+              onRenameUnit={(newUnit)=>onUpdateSection(sectionKey,{...section,daily:section.daily.map((d,j)=>j===i?{...d,unit:newUnit}:d)})}
+            />;
           })}
           {/* War Map day-specific extras */}
           {warMapExtras&&warMapExtras.length>0&&(
@@ -581,7 +678,10 @@ function GoalCard({sectionKey,section,checks,onCheck,actuals,onSave,editMode,onU
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
             {section.weekly.map((w,i)=>{
               const delta=history?calcWeekDelta(history,WEEK_KEY,sectionKey,i,actuals):null;
-              return <WeekCard key={w.key} item={{...w,actual:actuals[i],delta}} color={section.color} onClick={()=>setModal(i)} editMode={editMode} onDelete={()=>onUpdateSection(sectionKey,{...section,weekly:section.weekly.filter((_,j)=>j!==i)})}/>;
+              return <WeekCard key={w.key} item={{...w,actual:actuals[i],delta}} color={section.color}
+                onClick={()=>setModal(i)} editMode={editMode}
+                onDelete={()=>onUpdateSection(sectionKey,{...section,weekly:section.weekly.filter((_,j)=>j!==i)})}
+                onRenameLabel={(newLabel)=>onUpdateSection(sectionKey,{...section,weekly:section.weekly.map((ww,j)=>j===i?{...ww,label:newLabel}:ww)})}/>;
             })}
           </div>
           {editMode&&<button onClick={()=>setAddWeekly(true)} style={{display:"flex",alignItems:"center",gap:7,marginTop:8,background:section.color+"12",border:`1px dashed ${section.color}44`,borderRadius:8,padding:"7px 12px",cursor:"pointer",color:section.color,fontSize:11,letterSpacing:1,width:"100%"}}><span style={{fontSize:16}}>+</span> ADD WEEKLY TARGET</button>}
@@ -595,18 +695,12 @@ function GoalCard({sectionKey,section,checks,onCheck,actuals,onSave,editMode,onU
 function ScheduleSection({sched,onUpdate,editMode,weeklyGoals,onUpdateGoals,onAddWeeklyTarget}){
   const [addingTo,setAddingTo]=useState(null);
   const [newBlock,setNewBlock]=useState("");
-  const [editingHours,setEditingHours]=useState(null);
-  const [hoursVal,setHoursVal]=useState("");
-  const [editingGoal,setEditingGoal]=useState(null);
-  const [goalVal,setGoalVal]=useState("");
   const [addingGoal,setAddingGoal]=useState(false);
   const [newGoal,setNewGoal]=useState("");
   const [newGoalCat,setNewGoalCat]=useState("business");
 
   const deleteBlock=(dayId,blockId)=>onUpdate(sched.map(d=>d.id===dayId?{...d,blocks:d.blocks.filter(b=>b.id!==blockId)}:d));
   const addBlock=(dayId)=>{if(!newBlock.trim())return;onUpdate(sched.map(d=>d.id===dayId?{...d,blocks:[...d.blocks,{id:uid(),text:newBlock.trim()}]}:d));setNewBlock("");setAddingTo(null);};
-  const saveHours=(dayId)=>{if(!hoursVal.trim())return;onUpdate(sched.map(d=>d.id===dayId?{...d,sub:hoursVal.trim()}:d));setEditingHours(null);setHoursVal("");};
-  const saveGoal=(idx)=>{if(!goalVal.trim())return;const ng=[...weeklyGoals];ng[idx]=goalVal.trim();onUpdateGoals(ng);setEditingGoal(null);setGoalVal("");};
   const deleteGoal=(idx)=>onUpdateGoals(weeklyGoals.filter((_,i)=>i!==idx));
   const addGoal=()=>{if(!newGoal.trim())return;onUpdateGoals([...weeklyGoals,{text:newGoal.trim(),cat:newGoalCat}]);if(onAddWeeklyTarget)onAddWeeklyTarget(newGoalCat,newGoal.trim());setNewGoal("");setNewGoalCat("business");setAddingGoal(false);};
 
@@ -624,27 +718,19 @@ function ScheduleSection({sched,onUpdate,editMode,weeklyGoals,onUpdateGoals,onAd
           {weeklyGoals.map((g,i)=>{
             const gText=typeof g==="string"?g:g.text;
             const gCat=typeof g==="string"?"business":g.cat||"business";
-            const catColors={business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA"};
-            const catIcons={business:"◈",fatLoss:"◉",savings:"◆",social:"◍"};
+            const catColors={business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA",deen:"#4ADE80"};
+            const catIcons={business:"◈",fatLoss:"◉",savings:"◆",social:"◍",deen:"☽"};
             const chipColor=catColors[gCat]||"#00FF88";
             return(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:6}}>
-                {editMode&&editingGoal===i?(
-                  <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                    <input value={goalVal} onChange={e=>setGoalVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveGoal(i)} autoFocus style={{background:"#1a1a1a",border:`1px solid ${chipColor}44`,borderRadius:6,padding:"4px 8px",color:"#fff",fontSize:11,outline:"none",fontFamily:"inherit",width:160}}/>
-                    <button onClick={()=>saveGoal(i)} style={{padding:"4px 8px",borderRadius:6,background:chipColor+"20",border:`1px solid ${chipColor}44`,color:chipColor,fontSize:10,cursor:"pointer"}}>✓</button>
-                    <button onClick={()=>{setEditingGoal(null);setGoalVal("");}} style={{padding:"4px 8px",borderRadius:6,background:"transparent",border:"1px solid #2a2a2a",color:"#555",fontSize:10,cursor:"pointer"}}>✕</button>
-                  </div>
-                ):(
-                  <div style={{display:"flex",alignItems:"center",gap:5,background:"#181818",border:`1px solid ${chipColor}33`,borderRadius:8,padding:"5px 10px"}}>
-                    <span style={{fontSize:9,color:chipColor}}>{catIcons[gCat]||"◈"}</span>
-                    <span style={{fontSize:11,color:"#bbb"}}>{gText}</span>
-                    {editMode&&<>
-                      <button onClick={()=>{setEditingGoal(i);setGoalVal(gText);}} style={{width:14,height:14,background:"none",border:"none",color:"#444",fontSize:10,cursor:"pointer",padding:0}}>✏</button>
-                      <button onClick={()=>deleteGoal(i)} style={{width:14,height:14,background:"none",border:"none",color:"#444",fontSize:13,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
-                    </>}
-                  </div>
+              <div key={i} style={{display:"flex",alignItems:"center",gap:5,background:"#181818",border:`1px solid ${chipColor}33`,borderRadius:8,padding:"5px 10px"}}>
+                <span style={{fontSize:9,color:chipColor}}>{catIcons[gCat]||"◈"}</span>
+                {editMode ? (
+                  <InlineEdit value={gText} onSave={newVal=>{const ng=[...weeklyGoals];ng[i]=typeof g==="string"?newVal:{...g,text:newVal};onUpdateGoals(ng);}}
+                    style={{fontSize:11,color:"#bbb"}} inputStyle={{fontSize:11,width:160}}/>
+                ) : (
+                  <span style={{fontSize:11,color:"#bbb"}}>{gText}</span>
                 )}
+                {editMode&&<button onClick={()=>deleteGoal(i)} style={{width:14,height:14,background:"none",border:"none",color:"#444",fontSize:13,cursor:"pointer",padding:0,lineHeight:1,marginLeft:4}}>×</button>}
               </div>
             );
           })}
@@ -653,7 +739,7 @@ function ScheduleSection({sched,onUpdate,editMode,weeklyGoals,onUpdateGoals,onAd
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",background:"#181818",border:"1px solid #2a2a2a",borderRadius:10,padding:"10px 12px",width:"100%"}}>
               <input value={newGoal} onChange={e=>setNewGoal(e.target.value)} placeholder="e.g. Hit £500 revenue" autoFocus style={{flex:1,minWidth:140,background:"#1a1a1a",border:"1px solid #00FF8844",borderRadius:6,padding:"6px 10px",color:"#fff",fontSize:11,outline:"none",fontFamily:"inherit"}}/>
               <select value={newGoalCat} onChange={e=>setNewGoalCat(e.target.value)} style={{background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:6,padding:"6px 8px",color:"#888",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>
-                <option value="business">◈ Business</option><option value="fatLoss">◉ Fat Loss</option><option value="savings">◆ Savings</option><option value="social">◍ Social</option>
+                <option value="business">◈ Business</option><option value="fatLoss">◉ Fat Loss</option><option value="savings">◆ Savings</option><option value="social">◍ Social</option><option value="deen">☽ Deen</option>
               </select>
               <button onClick={addGoal} style={{padding:"6px 12px",borderRadius:6,background:"#00FF8820",border:"1px solid #00FF8844",color:"#00FF88",fontSize:10,cursor:"pointer",letterSpacing:1}}>ADD</button>
               <button onClick={()=>{setAddingGoal(false);setNewGoal("");}} style={{padding:"6px 8px",borderRadius:6,background:"transparent",border:"1px solid #2a2a2a",color:"#555",fontSize:10,cursor:"pointer"}}>✕</button>
@@ -664,23 +750,31 @@ function ScheduleSection({sched,onUpdate,editMode,weeklyGoals,onUpdateGoals,onAd
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
         {sched.map(day=>(
           <div key={day.id} style={{background:"#111",border:`1px solid ${editMode?day.color+"44":day.color+"20"}`,borderRadius:12,padding:16}}>
-            <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:18,color:day.color,letterSpacing:2}}>{day.label}</div>
-            {editMode&&editingHours===day.id?(
-              <div style={{display:"flex",gap:5,marginBottom:10}}>
-                <input value={hoursVal} onChange={e=>setHoursVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveHours(day.id)} autoFocus placeholder={day.sub} style={{flex:1,background:"#1a1a1a",border:`1px solid ${day.color}44`,borderRadius:6,padding:"4px 8px",color:"#fff",fontSize:10,outline:"none",fontFamily:"inherit"}}/>
-                <button onClick={()=>saveHours(day.id)} style={{padding:"4px 8px",borderRadius:6,background:day.color+"20",border:`1px solid ${day.color}44`,color:day.color,fontSize:10,cursor:"pointer"}}>✓</button>
-                <button onClick={()=>{setEditingHours(null);setHoursVal("");}} style={{padding:"4px 6px",borderRadius:6,background:"transparent",border:"1px solid #2a2a2a",color:"#555",fontSize:10,cursor:"pointer"}}>✕</button>
-              </div>
-            ):(
-              <div onClick={()=>{if(editMode){setEditingHours(day.id);setHoursVal(day.sub);}}} style={{fontSize:9,color:editMode?"#666":"#444",letterSpacing:1,marginBottom:10,cursor:editMode?"pointer":"default",display:"flex",alignItems:"center",gap:5}}>
-                {day.sub}{editMode&&<span style={{fontSize:8,color:"#333"}}>✏</span>}
-              </div>
-            )}
+            <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:18,color:day.color,letterSpacing:2,marginBottom:2}}>
+              {editMode ? (
+                <InlineEdit value={day.label} onSave={newLabel=>onUpdate(sched.map(d=>d.id===day.id?{...d,label:newLabel}:d))}
+                  style={{fontFamily:"'Bebas Neue',cursive",fontSize:18,color:day.color,letterSpacing:2}}
+                  inputStyle={{fontFamily:"'Bebas Neue',cursive",fontSize:16,width:120}}/>
+              ) : day.label}
+            </div>
+            <div style={{fontSize:9,color:editMode?"#666":"#444",letterSpacing:1,marginBottom:10,cursor:editMode?"text":"default"}}>
+              {editMode ? (
+                <InlineEdit value={day.sub} onSave={newSub=>onUpdate(sched.map(d=>d.id===day.id?{...d,sub:newSub}:d))}
+                  style={{fontSize:9,color:"#666",letterSpacing:1}}
+                  inputStyle={{fontSize:9,width:140}}/>
+              ) : day.sub}
+            </div>
             {day.blocks.map(b=>(
               <div key={b.id} style={{display:"flex",gap:6,marginBottom:6,alignItems:"flex-start"}}>
                 {editMode&&<button onClick={()=>deleteBlock(day.id,b.id)} style={{width:16,height:16,borderRadius:"50%",background:"#FF6B3522",border:"1px solid #FF6B3566",color:"#FF6B35",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1,marginTop:2}}>×</button>}
                 <span style={{color:day.color,fontSize:7,marginTop:4,flexShrink:0}}>▸</span>
-                <span style={{fontSize:11,color:"#777",lineHeight:1.5}}>{b.text}</span>
+                {editMode ? (
+                  <InlineEdit value={b.text} onSave={newText=>onUpdate(sched.map(d=>d.id===day.id?{...d,blocks:d.blocks.map(bl=>bl.id===b.id?{...bl,text:newText}:bl)}:d))}
+                    style={{fontSize:11,color:"#777",lineHeight:1.5,flex:1}}
+                    inputStyle={{fontSize:11,width:"100%"}}/>
+                ) : (
+                  <span style={{fontSize:11,color:"#777",lineHeight:1.5}}>{b.text}</span>
+                )}
               </div>
             ))}
             {editMode&&(
@@ -707,8 +801,8 @@ function ScheduleSection({sched,onUpdate,editMode,weeklyGoals,onUpdateGoals,onAd
 function HistoryModal({history,sectionKeys,onClose}){
   const weeks=Object.entries(history).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,20);
   const fmtD=d=>new Date(d).toLocaleDateString("en-GB",{day:"numeric",month:"short"});
-  const COLORS={business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA"};
-  const LABELS={business:"Business",fatLoss:"Fat Loss",savings:"Savings",social:"Social"};
+  const COLORS={business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA",deen:"#4ADE80"};
+  const LABELS={business:"Business",fatLoss:"Fat Loss",savings:"Savings",social:"Social",deen:"Deen"};
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000d",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#111",border:"1px solid #2a2a2a",borderRadius:18,padding:24,width:"min(680px,96vw)",maxHeight:"85vh",overflow:"auto"}}>
@@ -732,7 +826,7 @@ function HistoryModal({history,sectionKeys,onClose}){
                 <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:17,color:"#ccc",letterSpacing:1}}>{fmtD(dateStr)} – {fmtD(endD)}</div>
                 <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:26,color:oc}}>{overall}%</div>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+              <div style={{display:"grid",gridTemplateColumns:`repeat(${sectionKeys.length},1fr)`,gap:8}}>
                 {sectionKeys.map((sec,i)=>(
                   <div key={sec} style={{textAlign:"center"}}>
                     <div style={{fontSize:9,color:"#444",marginBottom:4}}>{LABELS[sec]||sec}</div>
@@ -1051,15 +1145,20 @@ export default function App(){
   const start=new Date(today.getFullYear(),0,1);
   const weekNum=Math.ceil(((today-start)/86400000+1)/7);
   const currentQ=Math.min(Math.ceil(weekNum/13),4);
-  const dayLabel=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][today.getDay()];
   const WEEK_KEY=getWeekKey();
   const DAY_KEY=getDayKey();
 
   const getOffsetWeekKey=(offset)=>{ const d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-((d.getDay()+6)%7)+offset*7); return `yz-week-${d.toISOString().slice(0,10)}`; };
   const getOffsetWeekNum=(offset)=>{ const d=new Date(); d.setDate(d.getDate()+offset*7); const s=new Date(d.getFullYear(),0,1); return Math.ceil(((d-s)/86400000+1)/7); };
 
-  const [sections,setSections]=useState(()=>ls.get("yz-sections")||DEFAULT_SECTIONS);
-  // Checks are per-day — reset every day
+  const [sections,setSections]=useState(()=>{
+    const saved=ls.get("yz-sections");
+    // Merge saved sections with defaults, ensuring deen exists
+    if(saved){
+      return {...DEFAULT_SECTIONS,...saved, deen: saved.deen || DEFAULT_SECTIONS.deen};
+    }
+    return DEFAULT_SECTIONS;
+  });
   const [checks,setChecks]=useState(()=>ls.get(getDayKey())?.checks||emptyChecks(ls.get("yz-sections")||DEFAULT_SECTIONS));
   const [actuals,setActuals]=useState(()=>emptyActuals(ls.get("yz-sections")||DEFAULT_SECTIONS));
   const [sched,setSched]=useState(()=>ls.get("yz-sched")||DEFAULT_SCHED);
@@ -1077,17 +1176,15 @@ export default function App(){
   const [page,setPage]=useState("dashboard");
   const [showCheckin,setShowCheckin]=useState(false);
   const [viewWeekOffset,setViewWeekOffset]=useState(0);
-  const [viewDayOffset,setViewDayOffset]=useState(0); // 0=today, -1=yesterday
+  const [viewDayOffset,setViewDayOffset]=useState(0);
   const [darkMode,setDarkMode]=useState(()=>ls.get('yz-dark')!==false);
   const [weekNote,setWeekNote]=useState('');
   const [showEndOfWeek,setShowEndOfWeek]=useState(false);
   const [showCheckinHistory,setShowCheckinHistory]=useState(false);
 
   useEffect(()=>{
-    // Daily checks from today's day key
     const dd=ls.get(getDayKey());
     if(dd?.checks) setChecks(dd.checks);
-    // Weekly actuals from week key
     const wd=ls.get(WEEK_KEY);
     if(wd?.actuals) setActuals(wd.actuals);
     if(wd?.notes) setWeekNote(wd.notes||'');
@@ -1102,7 +1199,6 @@ export default function App(){
     if(todayDay===0&&!ls.get(eowKey)) setTimeout(()=>setShowEndOfWeek(true),1500);
   },[]);
 
-  // When switching day offset, load that day's checks
   useEffect(()=>{
     const key=getOffsetDayKey(viewDayOffset);
     const dd=ls.get(key);
@@ -1117,10 +1213,8 @@ export default function App(){
 
   const persist=useCallback((nc,na,sec)=>{
     const activeDayKey=getOffsetDayKey(viewDayOffset);
-    // Save daily checks to day key
     const existingDay=ls.get(activeDayKey)||{};
     ls.set(activeDayKey,{...existingDay,checks:nc,savedAt:Date.now()});
-    // Save weekly actuals to week key
     const wd={checks:nc,actuals:na,savedAt:Date.now(),sectionSnapshot:sec};
     ls.set(WEEK_KEY,wd);
     const newHist={...history,[WEEK_KEY]:wd};
@@ -1157,18 +1251,31 @@ export default function App(){
   };
   const handleAddWeeklyTarget=(secKey,label)=>{ const sec=sections[secKey]; if(!sec)return; handleUpdateSection(secKey,{...sec,weekly:[...sec.weekly,{label,min:0,max:1,target:1,unit:"done",suffix:"/ 1",type:"check",key:uid()}]}); };
 
+  // Daily progress
   const allDaily=Object.keys(sections).flatMap(k=>(checks[k]||[]));
   const dailyDone=allDaily.filter(Boolean).length;
   const dailyPct=allDaily.length>0?Math.round((dailyDone/allDaily.length)*100):0;
   const topColor=dailyPct>=75?"#00FF88":dailyPct>=45?"#FFD700":"#FF6B35";
+
+  // Per-category weekly progress (daily checks + weekly targets hit)
+  const catProgress = Object.keys(sections).map(key => {
+    const sec = sections[key];
+    const chk = checks[key] || [];
+    const act = actuals[key] || [];
+    const dailyDoneCount = chk.filter(Boolean).length;
+    const weeklyHit = sec.weekly.filter((w,i) => { const v=act[i]; return v!==null&&v!==undefined&&v>=w.target; }).length;
+    const total = sec.daily.length + sec.weekly.length;
+    const pct = total > 0 ? Math.round(((dailyDoneCount + weeklyHit) / total) * 100) : 0;
+    return { key, color: sec.color, icon: sec.icon, label: sec.label, pct };
+  });
+
   const pastWeeks=Object.keys(history).filter(k=>k!==WEEK_KEY).length;
   const checkinDone=!!checkins[WEEK_KEY];
 
-  // Active day war map extras — based on current day offset
   const getActiveDayOfWeek=()=>{
     const d=new Date(); d.setDate(d.getDate()+viewDayOffset);
-    const dow=d.getDay(); // 0=Sun
-    return dow===0?6:dow-1; // mon=0
+    const dow=d.getDay();
+    return dow===0?6:dow-1;
   };
   const activeDayMapKey=DAY_KEYS[getActiveDayOfWeek()];
   const todayWarMapTasks=warMap[activeDayMapKey]||[];
@@ -1189,15 +1296,11 @@ export default function App(){
         @media(max-width:600px){.goal-grid{grid-template-columns:1fr!important;}.sched-grid{grid-template-columns:1fr!important;}}
       `}</style>
 
-      {/* War Map Planner overlay */}
       {showWarMapPlanner&&plannerWeekKey&&(
-        <WarMapPlanner
-          weekKey={plannerWeekKey}
-          sections={sections}
+        <WarMapPlanner weekKey={plannerWeekKey} sections={sections}
           warMap={ls.get(getWarMapKey(plannerWeekKey))||{}}
           onSave={(dayData)=>handleSaveWarMap(plannerWeekKey,dayData)}
-          onClose={()=>setShowWarMapPlanner(false)}
-        />
+          onClose={()=>setShowWarMapPlanner(false)}/>
       )}
 
       {showHistory&&<HistoryModal history={history} sectionKeys={Object.keys(sections)} onClose={()=>setShowHistory(false)}/>}
@@ -1211,7 +1314,7 @@ export default function App(){
       {viewDayOffset!==0&&<div style={{background:viewDayOffset<0?"#0d0d1a":"#0d1a0d",borderBottom:`1px solid ${viewDayOffset<0?"#6BA3FF33":"#00FF8833"}`,padding:"8px 20px",textAlign:"center",fontSize:10,color:viewDayOffset<0?"#6BA3FF":"#00FF88",letterSpacing:2}}>VIEWING {(()=>{const d=new Date();d.setDate(d.getDate()+viewDayOffset);return d.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"short"});})().toUpperCase()} · Ticks save to that day</div>}
 
       {/* Top bar */}
-      <div style={{borderBottom:"1px solid #1a1a1a",padding:"12px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:editMode||viewDayOffset===-1?33:0,background:"#0a0a0a",zIndex:100,flexWrap:"wrap",gap:8}}>
+      <div style={{borderBottom:"1px solid #1a1a1a",padding:"10px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:editMode||viewDayOffset!==0?33:0,background:"#0a0a0a",zIndex:100,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span style={{fontFamily:"'Bebas Neue',cursive",fontSize:24,letterSpacing:3,color:"#fff"}}>LIFT OFF YEAR</span>
           <span style={{background:"#00FF8812",border:"1px solid #00FF8830",borderRadius:6,padding:"3px 9px",fontSize:10,color:"#00FF88",letterSpacing:2}}>Q{currentQ}</span>
@@ -1224,6 +1327,8 @@ export default function App(){
           <button onClick={()=>setShowCheckinHistory(true)} style={{background:"#181818",border:"1px solid #252525",borderRadius:7,padding:"4px 11px",cursor:"pointer",fontSize:10,color:"#FFD700",letterSpacing:1}}>📊 METRICS</button>
           <button onClick={handleExport} style={{background:"#181818",border:"1px solid #252525",borderRadius:7,padding:"4px 11px",cursor:"pointer",fontSize:10,color:"#555",letterSpacing:1}}>⬇ CSV</button>
         </div>
+
+        {/* Right side: day nav + overall ring + per-category rings */}
         <div style={{display:"flex",alignItems:"center",gap:8}}>
 
           {/* Day navigator */}
@@ -1247,14 +1352,32 @@ export default function App(){
             })()}
           </div>
           <button onClick={()=>setViewDayOffset(o=>o+1)} style={{width:28,height:28,borderRadius:7,border:"1px solid #252525",background:"#181818",color:"#888",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>›</button>
+
           <div style={{width:1,height:32,background:"#1e1e1e",margin:"0 4px"}}/>
+
+          {/* Overall daily ring */}
           <div style={{textAlign:"center"}}>
-            <div style={{fontSize:8,color:viewDayOffset!==0?"#6BA3FF":"#444",letterSpacing:2}}>{viewDayOffset!==0?"PAST DAY":"DAILY"}</div>
-            <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:20,color:viewWeekOffset===0?topColor:"#555",letterSpacing:1}}>{viewWeekOffset===0?dailyPct+"%":"—"}</div>
+            <div style={{fontSize:8,color:viewDayOffset!==0?"#6BA3FF":"#444",letterSpacing:2,marginBottom:1}}>{viewDayOffset!==0?"PAST DAY":"DAILY"}</div>
+            <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:18,color:viewWeekOffset===0?topColor:"#555",letterSpacing:1,lineHeight:1}}>{viewWeekOffset===0?dailyPct+"%":"—"}</div>
           </div>
           <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
             <Ring pct={viewWeekOffset===0?dailyPct:0} color={viewWeekOffset===0?(viewDayOffset!==0?"#6BA3FF":topColor):"#333"} size={42}/>
             <span style={{position:"absolute",fontSize:8,color:"#fff",fontWeight:700}}>{viewWeekOffset===0?`${dailyDone}/${allDaily.length}`:"—"}</span>
+          </div>
+
+          <div style={{width:1,height:32,background:"#1e1e1e",margin:"0 4px"}}/>
+
+          {/* Per-category weekly rings */}
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            {catProgress.map(cat => (
+              <div key={cat.key} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+                <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <Ring pct={viewWeekOffset===0?cat.pct:0} color={viewWeekOffset===0?cat.color:"#333"} size={34}/>
+                  <span style={{position:"absolute",fontSize:7,color:"#fff",fontWeight:700}}>{viewWeekOffset===0?cat.pct:0}%</span>
+                </div>
+                <span style={{fontSize:7,color:cat.color,letterSpacing:0.5}}>{cat.icon}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -1306,7 +1429,7 @@ export default function App(){
         const offKey=getOffsetWeekKey(viewWeekOffset);
         const offWkNum=getOffsetWeekNum(viewWeekOffset);
         const offData=history[offKey];
-        const COLORS={business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA"};
+        const COLORS={business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA",deen:"#4ADE80"};
         const isFuture=viewWeekOffset>0;
         if(!offData&&!isFuture){
           return(
@@ -1338,7 +1461,7 @@ export default function App(){
                       <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:2}}>WEEK {offWkNum} SCORE</div>
                       <div style={{fontFamily:"'Bebas Neue',cursive",fontSize:52,color:oc,letterSpacing:2,lineHeight:1}}>{overall}%</div>
                     </div>
-                    <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div style={{flex:1,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(80px,1fr))",gap:10}}>
                       {sectionKeys.map((sec,si)=>{const p=pcts[si];const c=COLORS[sec];return(<div key={sec}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:9,color:c}}>{sections[sec]?.label||sec}</span><span style={{fontFamily:"'Bebas Neue',cursive",fontSize:12,color:c}}>{p}%</span></div><div style={{height:3,background:"#1a1a1a",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:`${p}%`,background:c}}/></div></div>);})}</div>
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
@@ -1372,7 +1495,7 @@ export default function App(){
                 </>
               );
             })()}
-            {isFuture&&<FutureWeekCards sections={sections} offWkNum={offWkNum} offKey={offKey} history={history} persist={persist} checks={checks} actuals={actuals} COLORS={{business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA"}}/>}
+            {isFuture&&<FutureWeekCards sections={sections} offWkNum={offWkNum} offKey={offKey} history={history} persist={persist} checks={checks} actuals={actuals} COLORS={{business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA",deen:"#4ADE80"}}/>}
           </div>
         );
       })()}
@@ -1408,7 +1531,7 @@ function MilestoneSection({milestones,onUpdate}){
   const [newLabel,setNewLabel]=useState("");
   const [newDate,setNewDate]=useState("");
   const [newCat,setNewCat]=useState("business");
-  const cats={business:{color:"#00FF88",icon:"◈"},fatLoss:{color:"#FF6B35",icon:"◉"},savings:{color:"#FFD700",icon:"◆"},social:{color:"#A78BFA",icon:"◍"}};
+  const cats={business:{color:"#00FF88",icon:"◈"},fatLoss:{color:"#FF6B35",icon:"◉"},savings:{color:"#FFD700",icon:"◆"},social:{color:"#A78BFA",icon:"◍"},deen:{color:"#4ADE80",icon:"☽"}};
   const toggle=(id)=>onUpdate(milestones.map(m=>m.id===id?{...m,done:!m.done,...(!m.done?{completedWeek:Math.ceil(((new Date()-new Date(new Date().getFullYear(),0,1))/86400000+1)/7)}:{completedWeek:undefined})}:m));
   const del=(id)=>onUpdate(milestones.filter(m=>m.id!==id));
   const add=()=>{ if(!newLabel.trim())return; onUpdate([...milestones,{id:uid(),label:newLabel.trim(),category:newCat,color:cats[newCat].color,done:false,date:newDate||"2026"}]); setNewLabel("");setAdding(false); };
@@ -1425,7 +1548,7 @@ function MilestoneSection({milestones,onUpdate}){
             <input value={newLabel} onChange={e=>setNewLabel(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} placeholder="e.g. Sign first client" autoFocus style={{flex:1,minWidth:160,background:"#1a1a1a",border:"1px solid #00FF8833",borderRadius:8,padding:"8px 12px",color:"#fff",fontSize:12,outline:"none",fontFamily:"inherit"}}/>
             <input value={newDate} onChange={e=>setNewDate(e.target.value)} placeholder="e.g. Mar 2026" style={{width:110,background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:8,padding:"8px 10px",color:"#888",fontSize:11,outline:"none",fontFamily:"inherit"}}/>
             <select value={newCat} onChange={e=>setNewCat(e.target.value)} style={{background:"#1a1a1a",border:"1px solid #2a2a2a",borderRadius:8,padding:"8px 10px",color:"#888",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
-              <option value="business">Business</option><option value="fatLoss">Fat Loss</option><option value="savings">Savings</option><option value="social">Social</option>
+              <option value="business">Business</option><option value="fatLoss">Fat Loss</option><option value="savings">Savings</option><option value="social">Social</option><option value="deen">Deen</option>
             </select>
             <button onClick={add} style={{padding:"8px 16px",borderRadius:8,border:"1px solid #00FF8855",background:"#00FF8820",color:"#00FF88",fontSize:11,cursor:"pointer",letterSpacing:1}}>SAVE</button>
             <button onClick={()=>{setAdding(false);setNewLabel("");}} style={{padding:"8px 12px",borderRadius:8,border:"1px solid #2a2a2a",background:"transparent",color:"#555",fontSize:11,cursor:"pointer"}}>✕</button>
@@ -1448,7 +1571,12 @@ function MilestoneSection({milestones,onUpdate}){
                   <button onClick={()=>toggle(m.id)} style={{width:22,height:22,borderRadius:6,border:`2px solid ${m.done?"#2a2a2a":m.color}`,background:m.done?"transparent":m.color+"18",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
                     {m.done?<span style={{color:"#2a2a2a",fontSize:11,fontWeight:900}}>✓</span>:<span style={{color:m.color,fontSize:8}}>{cats[m.category]?.icon||"◈"}</span>}
                   </button>
-                  <span style={{flex:1,fontSize:12,color:m.done?"#333":"#ccc",textDecoration:m.done?"line-through":"none"}}>{m.label}</span>
+                  {/* Inline-editable milestone label */}
+                  <span style={{flex:1}}>
+                    <InlineEdit value={m.label} onSave={newLabel=>onUpdate(milestones.map(ms=>ms.id===m.id?{...ms,label:newLabel}:ms))}
+                      style={{fontSize:12,color:m.done?"#333":"#ccc",textDecoration:m.done?"line-through":"none"}}
+                      inputStyle={{fontSize:12,width:"100%"}}/>
+                  </span>
                   {m.done&&<span style={{fontSize:9,color:"#00FF88",letterSpacing:1,flexShrink:0}}>DONE</span>}
                   <button onClick={()=>del(m.id)} style={{width:18,height:18,borderRadius:"50%",background:"transparent",border:"none",color:"#333",fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1}}>×</button>
                 </div>
@@ -1486,12 +1614,12 @@ function FutureWeekCards({sections,offWkNum,offKey,history,persist,checks,actual
             <div key={sec} style={{background:"#111",border:`1px solid ${color}20`,borderRadius:16,padding:20,position:"relative",overflow:"hidden"}}>
               <div style={{position:"absolute",top:-30,right:-30,width:120,height:120,borderRadius:"50%",background:`radial-gradient(circle,${color}07 0%,transparent 70%)`,pointerEvents:"none"}}/>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
-                <div><div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3}}><span style={{color,fontSize:16}}>{s.icon}</span><span style={{color,fontSize:10,letterSpacing:2}}>{s.label.toUpperCase()}</span></div><div style={{color:"#fff",fontFamily:"'Bebas Neue',cursive",fontSize:18,letterSpacing:1}}>{s.goal}</div><div style={{fontSize:9,color:"#444",marginTop:2}}>Target wk {offWkNum}: {GOAL_META[sec].format(Math.round(TRAJECTORIES[sec](offWkNum)))}</div></div>
+                <div><div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3}}><span style={{color,fontSize:16}}>{s.icon}</span><span style={{color,fontSize:10,letterSpacing:2}}>{s.label.toUpperCase()}</span></div><div style={{color:"#fff",fontFamily:"'Bebas Neue',cursive",fontSize:18,letterSpacing:1}}>{s.goal}</div><div style={{fontSize:9,color:"#444",marginTop:2}}>Target wk {offWkNum}: {GOAL_META[sec]?.format(Math.round(TRAJECTORIES[sec]?.(offWkNum)||0))}</div></div>
                 <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ring pct={pct} color={color} size={56}/><span style={{position:"absolute",fontFamily:"'Bebas Neue',cursive",fontSize:12,color:"#fff"}}>{pct}%</span></div>
               </div>
               <div style={{borderTop:"1px solid #1e1e1e",paddingTop:12,marginBottom:12}}>
                 <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:6}}>DAILY NON-NEGOTIABLES</div>
-                {s.daily.map((item,ii)=>(<CheckRow key={item.key} label={`${item.label} · ${item.unit}`} done={fChk[ii]||false} color={color} onToggle={()=>toggleCheck(sec,ii)} editMode={false} onDelete={()=>{}}/>))}
+                {s.daily.map((item,ii)=>(<CheckRow key={item.key} label={item.label} unit={item.unit} done={fChk[ii]||false} color={color} onToggle={()=>toggleCheck(sec,ii)} editMode={false} onDelete={()=>{}}/>))}
               </div>
               <div style={{borderTop:"1px solid #1e1e1e",paddingTop:12}}>
                 <div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:8}}>WEEKLY TARGETS <span style={{color:"#2a2a2a"}}>· tap to plan</span></div>
@@ -1511,7 +1639,7 @@ function FutureWeekCards({sections,offWkNum,offKey,history,persist,checks,actual
 function EndOfWeekModal({weekNum,weekKey,history,sections,note,onSaveNote,onClose}){
   const [localNote,setLocalNote]=useState(note||"");
   const wd=history[weekKey];
-  const COLORS={business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA"};
+  const COLORS={business:"#00FF88",fatLoss:"#FF6B35",savings:"#FFD700",social:"#A78BFA",deen:"#4ADE80"};
   const sectionKeys=Object.keys(sections||DEFAULT_SECTIONS);
   const pcts=sectionKeys.map(sec=>{const c=wd?.checks?.[sec]||[];const a=wd?.actuals?.[sec]||[];const snap=wd?.sectionSnapshot?.[sec]||sections[sec]||DEFAULT_SECTIONS[sec];const total=(snap?.daily?.length||4)+(snap?.weekly?.length||4);const done=c.filter(Boolean).length+(snap?.weekly||[]).filter((w,i)=>{const v=a[i];return v!==null&&v!==undefined&&v>=w.target;}).length;return total>0?Math.round((done/total)*100):0;});
   const overall=pcts.length>0?Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length):0;
@@ -1525,7 +1653,7 @@ function EndOfWeekModal({weekNum,weekKey,history,sections,note,onSaveNote,onClos
         <p style={{fontSize:11,color:"#555",margin:"0 0 20px"}}>Sunday — time to close the loop</p>
         <div style={{background:"#1a1a1a",borderRadius:14,padding:16,marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
           <div><div style={{fontSize:9,color:"#444",letterSpacing:2,marginBottom:2}}>THIS WEEK</div><div style={{fontFamily:"'Bebas Neue',cursive",fontSize:48,color:oc,letterSpacing:2,lineHeight:1}}>{overall}%</div></div>
-          <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div style={{flex:1,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(70px,1fr))",gap:8}}>
             {sectionKeys.map((sec,i)=>(<div key={sec}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:9,color:COLORS[sec]}}>{sections[sec]?.label||sec}</span><span style={{fontFamily:"'Bebas Neue',cursive",fontSize:12,color:COLORS[sec]}}>{pcts[i]}%</span></div><div style={{height:3,background:"#252525",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:`${pcts[i]}%`,background:COLORS[sec]}}/></div></div>))}
           </div>
         </div>
