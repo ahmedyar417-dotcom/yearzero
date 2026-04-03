@@ -368,6 +368,9 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [manualSyncing, setManualSyncing] = useState(false);
   const [manualSyncStatus, setManualSyncStatus] = useState(null);
+  const [editMode, setEditMode] = useState(false);
+  const [forcePushing, setForcePushing] = useState(false);
+  const [forcePushStatus, setForcePushStatus] = useState(null);
 
   // Auth: check session on mount, subscribe to changes
   useEffect(() => {
@@ -419,6 +422,28 @@ export default function App() {
       setTimeout(() => setManualSyncStatus(null), 3000);
     } finally {
       setManualSyncing(false);
+    }
+  };
+
+  const handleForcePush = async () => {
+    if (forcePushing || !session) return;
+    const uid = session.user.id;
+    setForcePushing(true); setForcePushStatus(null);
+    try {
+      console.log("[sync] force push: deleting all Supabase rows for user", uid);
+      const { error: delErr } = await supabase.from("yz_data").delete().eq("user_id", uid);
+      if (delErr) throw delErr;
+      console.log("[sync] force push: deleted all rows, now pushing local data");
+      await pushAllLocalToSupabase(uid);
+      setForcePushStatus("✓ DONE");
+      console.log("[sync] force push complete");
+      setTimeout(() => setForcePushStatus(null), 3000);
+    } catch (e) {
+      console.error("[sync] force push failed:", e);
+      setForcePushStatus("✗ FAILED");
+      setTimeout(() => setForcePushStatus(null), 3000);
+    } finally {
+      setForcePushing(false);
     }
   };
 
@@ -493,6 +518,14 @@ export default function App() {
           <button onClick={handleManualSync} disabled={manualSyncing} style={{ background: manualSyncStatus === "✓ SYNCED" ? "#00FF8818" : "#181818", border: `1px solid ${manualSyncStatus === "✓ SYNCED" ? "#00FF8844" : manualSyncStatus === "✗ FAILED" ? "#FF3B3B44" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: manualSyncing ? "not-allowed" : "pointer", fontSize: 10, color: manualSyncStatus === "✓ SYNCED" ? "#00FF88" : manualSyncStatus === "✗ FAILED" ? "#FF6B6B" : manualSyncing ? "#555" : "#A78BFA", letterSpacing: 1 }}>
             {manualSyncing ? "SYNCING..." : manualSyncStatus || "SYNC"}
           </button>
+          <button onClick={() => { setEditMode(m => !m); setForcePushStatus(null); }} style={{ background: editMode ? "#FF6B3518" : "#181818", border: `1px solid ${editMode ? "#FF6B3544" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: editMode ? "#FF6B35" : "#444", letterSpacing: 1 }}>
+            {editMode ? "EDITING" : "EDIT"}
+          </button>
+          {editMode && (
+            <button onClick={handleForcePush} disabled={forcePushing} style={{ background: forcePushStatus === "✓ DONE" ? "#00FF8818" : "#FF3B3B14", border: `1px solid ${forcePushStatus === "✓ DONE" ? "#00FF8844" : forcePushStatus === "✗ FAILED" ? "#FF3B3B88" : "#FF3B3B44"}`, borderRadius: 7, padding: "4px 11px", cursor: forcePushing ? "not-allowed" : "pointer", fontSize: 10, color: forcePushStatus === "✓ DONE" ? "#00FF88" : forcePushing ? "#555" : "#FF6B6B", letterSpacing: 1 }}>
+              {forcePushing ? "PUSHING..." : forcePushStatus || "FORCE PUSH"}
+            </button>
+          )}
           <button onClick={() => supabase.auth.signOut()} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#444", letterSpacing: 1 }}>
             SIGN OUT
           </button>
