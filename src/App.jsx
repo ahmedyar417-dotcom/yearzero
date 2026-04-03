@@ -37,6 +37,21 @@ const hydrateFromSupabase = async (userId) => {
   } catch { /* silent */ }
 };
 
+const pushAllLocalToSupabase = async (userId) => {
+  if (!userId) return;
+  const upserts = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith("yz-") && k !== "yz-sync-key") {
+      upserts.push({ user_id: userId, key: k, value: ls.get(k), updated_at: new Date().toISOString() });
+    }
+  }
+  if (!upserts.length) return;
+  try {
+    await supabase.from("yz_data").upsert(upserts, { onConflict: "user_id,key" });
+  } catch { /* silent */ }
+};
+
 const getWeekKey = () => {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -351,11 +366,16 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load data: hydrate from Supabase then read localStorage
+  // Load data: hydrate from Supabase, push any local data up, then render
   useEffect(() => {
     if (!session) return;
     const load = async () => {
-      await hydrateFromSupabase(session.user.id);
+      const uid = session.user.id;
+      // 1. Fetch from Supabase and write into localStorage (hydrate remote → local)
+      await hydrateFromSupabase(uid);
+      // 2. Push all local yz- keys to Supabase (upload local → remote)
+      await pushAllLocalToSupabase(uid);
+      // 3. Read final state from localStorage and render
       const wd = ls.get(WEEK_KEY);
       if (wd?.checks) setChecks(wd.checks);
       if (wd?.actuals) setActuals(wd.actuals);
