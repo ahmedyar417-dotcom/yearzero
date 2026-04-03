@@ -3,7 +3,19 @@
     "allow": [
       "Bash(git init:*)",
       "Bash(git remote:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(npm install:*)",
+      "Bash(/usr/local/bin/npm install:*)",
+      "Bash(command -v npm)",
+      "Read(//Users/ahmadyar/.nvm/versions/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Read(//Users/ahmadyar/.volta/bin/**)",
+      "Read(//usr/**)",
+      "Bash(pnpm add:*)",
+      "Bash(env)"
     ]
   }
 }
