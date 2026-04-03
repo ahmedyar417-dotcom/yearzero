@@ -15,26 +15,18 @@ const ls = {
   },
 };
 
-// ─── Supabase background sync ────────────────────────────────────────────────
+// ─── Supabase sync ───────────────────────────────────────────────────────────
 const syncToSupabase = async (userId, key, value) => {
   if (!userId) return;
+  console.log("[sync] pushing key:", key);
   try {
-    await supabase.from("yz_data").upsert(
+    const { error } = await supabase.from("yz_data").upsert(
       { user_id: userId, key, value, updated_at: new Date().toISOString() },
       { onConflict: "user_id,key" }
     );
-  } catch { /* silent — localStorage already saved */ }
-};
-
-const hydrateFromSupabase = async (userId) => {
-  if (!userId) return;
-  try {
-    const { data } = await supabase
-      .from("yz_data")
-      .select("key, value")
-      .eq("user_id", userId);
-    if (data) data.forEach(({ key, value }) => ls.set(key, value));
-  } catch { /* silent */ }
+    if (error) console.error("[sync] push error for", key, error);
+    else console.log("[sync] pushed ok:", key);
+  } catch (e) { console.error("[sync] push exception:", key, e); }
 };
 
 const pushAllLocalToSupabase = async (userId) => {
@@ -43,13 +35,35 @@ const pushAllLocalToSupabase = async (userId) => {
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
     if (k && k.startsWith("yz-") && k !== "yz-sync-key") {
+      console.log("[sync] queuing local key for push:", k);
       upserts.push({ user_id: userId, key: k, value: ls.get(k), updated_at: new Date().toISOString() });
     }
   }
-  if (!upserts.length) return;
+  if (!upserts.length) { console.log("[sync] no local yz- keys to push"); return; }
+  console.log("[sync] pushing", upserts.length, "keys to Supabase");
   try {
-    await supabase.from("yz_data").upsert(upserts, { onConflict: "user_id,key" });
-  } catch { /* silent */ }
+    const { error } = await supabase.from("yz_data").upsert(upserts, { onConflict: "user_id,key" });
+    if (error) console.error("[sync] batch push error:", error);
+    else console.log("[sync] batch push ok —", upserts.length, "keys");
+  } catch (e) { console.error("[sync] batch push exception:", e); }
+};
+
+const pullAllFromSupabase = async (userId) => {
+  if (!userId) return;
+  console.log("[sync] pulling all rows from Supabase for user", userId);
+  try {
+    const { data, error } = await supabase
+      .from("yz_data")
+      .select("key, value")
+      .eq("user_id", userId);
+    if (error) { console.error("[sync] pull error:", error); return; }
+    if (!data?.length) { console.log("[sync] no rows in Supabase yet"); return; }
+    data.forEach(({ key, value }) => {
+      console.log("[sync] writing to localStorage:", key);
+      ls.set(key, value);
+    });
+    console.log("[sync] pull complete —", data.length, "keys written to localStorage");
+  } catch (e) { console.error("[sync] pull exception:", e); }
 };
 
 const getWeekKey = () => {
@@ -356,6 +370,8 @@ export default function App() {
   const [syncKey, setSyncKey] = useState(() => ls.get("yz-sync-key") || "");
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState(null);
+  const [manualSyncing, setManualSyncing] = useState(false);
+  const [manualSyncStatus, setManualSyncStatus] = useState(null);
 
   // Auth: check session on mount, subscribe to changes
   useEffect(() => {
@@ -366,20 +382,22 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load data: hydrate from Supabase, push any local data up, then render
+  // Load data on login: push local up, pull remote down, then render
   useEffect(() => {
     if (!session) return;
     const load = async () => {
       const uid = session.user.id;
-      // 1. Fetch from Supabase and write into localStorage (hydrate remote → local)
-      await hydrateFromSupabase(uid);
-      // 2. Push all local yz- keys to Supabase (upload local → remote)
+      console.log("[sync] login detected, starting sync for user", uid);
+      // 1. Push all local yz- keys to Supabase first (so local data is never lost)
       await pushAllLocalToSupabase(uid);
-      // 3. Read final state from localStorage and render
+      // 2. Pull all Supabase rows into localStorage (remote wins — overwrites local)
+      await pullAllFromSupabase(uid);
+      // 3. Read final merged state and render
       const wd = ls.get(WEEK_KEY);
       if (wd?.checks) setChecks(wd.checks);
       if (wd?.actuals) setActuals(wd.actuals);
       setHistory(ls.get("yz-history") || {});
+      console.log("[sync] dashboard ready");
     };
     load();
   }, [session?.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -435,6 +453,30 @@ export default function App() {
       setSyncStatus({ ok: false, msg: `✗ ${e.message}` });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleManualSync = async () => {
+    if (manualSyncing || !session) return;
+    const uid = session.user.id;
+    setManualSyncing(true); setManualSyncStatus(null);
+    try {
+      console.log("[sync] manual sync started");
+      await pushAllLocalToSupabase(uid);
+      await pullAllFromSupabase(uid);
+      const wd = ls.get(WEEK_KEY);
+      if (wd?.checks) setChecks(wd.checks);
+      if (wd?.actuals) setActuals(wd.actuals);
+      setHistory(ls.get("yz-history") || {});
+      setManualSyncStatus("✓ SYNCED");
+      console.log("[sync] manual sync complete");
+      setTimeout(() => setManualSyncStatus(null), 3000);
+    } catch (e) {
+      console.error("[sync] manual sync failed:", e);
+      setManualSyncStatus("✗ FAILED");
+      setTimeout(() => setManualSyncStatus(null), 3000);
+    } finally {
+      setManualSyncing(false);
     }
   };
 
@@ -506,8 +548,11 @@ export default function App() {
           <button onClick={() => setShowHistory(true)} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#555", letterSpacing: 1 }}>
             HISTORY {pastWeeks > 0 ? `· ${pastWeeks}wk` : ""}
           </button>
-          <button onClick={() => { setShowSync(s => !s); setSyncStatus(null); }} style={{ background: showSync ? "#A78BFA18" : "#181818", border: `1px solid ${showSync ? "#A78BFA44" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: showSync ? "#A78BFA" : "#555", letterSpacing: 1 }}>
-            SYNC
+          <button onClick={handleManualSync} disabled={manualSyncing} style={{ background: manualSyncStatus === "✓ SYNCED" ? "#00FF8818" : "#181818", border: `1px solid ${manualSyncStatus === "✓ SYNCED" ? "#00FF8844" : manualSyncStatus === "✗ FAILED" ? "#FF3B3B44" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: manualSyncing ? "not-allowed" : "pointer", fontSize: 10, color: manualSyncStatus === "✓ SYNCED" ? "#00FF88" : manualSyncStatus === "✗ FAILED" ? "#FF6B6B" : manualSyncing ? "#555" : "#A78BFA", letterSpacing: 1 }}>
+            {manualSyncing ? "SYNCING..." : manualSyncStatus || "SYNC"}
+          </button>
+          <button onClick={() => { setShowSync(s => !s); setSyncStatus(null); }} style={{ background: showSync ? "#A78BFA18" : "#181818", border: `1px solid ${showSync ? "#A78BFA44" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: showSync ? "#A78BFA" : "#333", letterSpacing: 1 }}>
+            KV
           </button>
           <button onClick={() => supabase.auth.signOut()} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#444", letterSpacing: 1 }}>
             SIGN OUT
