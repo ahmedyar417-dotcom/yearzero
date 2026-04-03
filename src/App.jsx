@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import MacroTracker from "./MacroTracker";
+import { supabase } from "./supabase";
+import AuthScreen from "./AuthScreen";
 
 // ─── localStorage persistence ────────────────────────────────────────────────
 const ls = {
@@ -11,6 +13,28 @@ const ls = {
     try { localStorage.setItem(key, JSON.stringify(val)); return true; }
     catch { return false; }
   },
+};
+
+// ─── Supabase background sync ────────────────────────────────────────────────
+const syncToSupabase = async (userId, key, value) => {
+  if (!userId) return;
+  try {
+    await supabase.from("yz_data").upsert(
+      { user_id: userId, key, value, updated_at: new Date().toISOString() },
+      { onConflict: "user_id,key" }
+    );
+  } catch { /* silent — localStorage already saved */ }
+};
+
+const hydrateFromSupabase = async (userId) => {
+  if (!userId) return;
+  try {
+    const { data } = await supabase
+      .from("yz_data")
+      .select("key, value")
+      .eq("user_id", userId);
+    if (data) data.forEach(({ key, value }) => ls.set(key, value));
+  } catch { /* silent */ }
 };
 
 const getWeekKey = () => {
@@ -307,6 +331,7 @@ export default function App() {
   const dayLabel = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][today.getDay()];
   const WEEK_KEY = getWeekKey();
 
+  const [session, setSession] = useState(undefined); // undefined = checking
   const [checks, setChecks] = useState(emptyChecks);
   const [actuals, setActuals] = useState(emptyActuals);
   const [history, setHistory] = useState({});
@@ -317,14 +342,27 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState(null);
 
-  // Load from localStorage on mount
+  // Auth: check session on mount, subscribe to changes
   useEffect(() => {
-    const wd = ls.get(WEEK_KEY);
-    if (wd?.checks) setChecks(wd.checks);
-    if (wd?.actuals) setActuals(wd.actuals);
-    const hist = ls.get("yz-history") || {};
-    setHistory(hist);
+    supabase.auth.getSession().then(({ data: { session: s } }) => setSession(s ?? null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s ?? null);
+    });
+    return () => subscription.unsubscribe();
   }, []);
+
+  // Load data: hydrate from Supabase then read localStorage
+  useEffect(() => {
+    if (!session) return;
+    const load = async () => {
+      await hydrateFromSupabase(session.user.id);
+      const wd = ls.get(WEEK_KEY);
+      if (wd?.checks) setChecks(wd.checks);
+      if (wd?.actuals) setActuals(wd.actuals);
+      setHistory(ls.get("yz-history") || {});
+    };
+    load();
+  }, [session?.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const collectAllData = () => {
     const result = {};
@@ -381,15 +419,18 @@ export default function App() {
   };
 
   const persist = useCallback((nc, na) => {
+    const userId = session?.user?.id;
     const wd = { checks: nc, actuals: na, savedAt: Date.now() };
     ls.set(WEEK_KEY, wd);
+    syncToSupabase(userId, WEEK_KEY, wd);
     const newHist = { ...history, [WEEK_KEY]: wd };
     const trimmed = Object.fromEntries(Object.keys(newHist).sort().reverse().slice(0, 52).map(k => [k, newHist[k]]));
     ls.set("yz-history", trimmed);
+    syncToSupabase(userId, "yz-history", trimmed);
     setHistory(trimmed);
     setSaveFlash(true);
     setTimeout(() => setSaveFlash(false), 1400);
-  }, [history, WEEK_KEY]);
+  }, [history, WEEK_KEY, session]);
 
   const handleCheck = (sec, idx) => {
     const next = { ...checks, [sec]: checks[sec].map((v, i) => i === idx ? !v : v) };
@@ -405,6 +446,16 @@ export default function App() {
   const dailyPct = Math.round((dailyDone / allDaily.length) * 100);
   const topColor = dailyPct >= 75 ? "#00FF88" : dailyPct >= 45 ? "#FFD700" : "#FF6B35";
   const pastWeeks = Object.keys(history).filter(k => k !== WEEK_KEY).length;
+
+  // Still checking session — blank dark screen to avoid flash
+  if (session === undefined) {
+    return <div style={{ minHeight: "100vh", background: "#0a0a0a" }} />;
+  }
+
+  // Not logged in — show auth screen
+  if (!session) {
+    return <AuthScreen />;
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "#fff", fontFamily: "'DM Mono', monospace" }}>
@@ -437,6 +488,9 @@ export default function App() {
           </button>
           <button onClick={() => { setShowSync(s => !s); setSyncStatus(null); }} style={{ background: showSync ? "#A78BFA18" : "#181818", border: `1px solid ${showSync ? "#A78BFA44" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: showSync ? "#A78BFA" : "#555", letterSpacing: 1 }}>
             SYNC
+          </button>
+          <button onClick={() => supabase.auth.signOut()} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#444", letterSpacing: 1 }}>
+            SIGN OUT
           </button>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
