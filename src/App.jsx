@@ -366,10 +366,6 @@ export default function App() {
   const [history, setHistory] = useState({});
   const [saveFlash, setSaveFlash] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [showSync, setShowSync] = useState(false);
-  const [syncKey, setSyncKey] = useState(() => ls.get("yz-sync-key") || "");
-  const [syncing, setSyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState(null);
   const [manualSyncing, setManualSyncing] = useState(false);
   const [manualSyncStatus, setManualSyncStatus] = useState(null);
 
@@ -401,60 +397,6 @@ export default function App() {
     };
     load();
   }, [session?.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const collectAllData = () => {
-    const result = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith("yz-") && k !== "yz-sync-key") {
-        result[k] = ls.get(k);
-      }
-    }
-    return result;
-  };
-
-  const handlePush = async () => {
-    if (!syncKey.trim() || syncing) return;
-    setSyncing(true); setSyncStatus(null);
-    try {
-      const res = await fetch("/api/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: syncKey.trim(), action: "push", data: collectAllData() }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Push failed");
-      setSyncStatus({ ok: true, msg: "✓ Pushed to cloud" });
-    } catch (e) {
-      setSyncStatus({ ok: false, msg: `✗ ${e.message}` });
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  const handlePull = async () => {
-    if (!syncKey.trim() || syncing) return;
-    setSyncing(true); setSyncStatus(null);
-    try {
-      const res = await fetch("/api/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: syncKey.trim(), action: "pull" }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Pull failed");
-      Object.entries(json.data).forEach(([k, v]) => ls.set(k, v));
-      const wd = ls.get(WEEK_KEY);
-      if (wd?.checks) setChecks(wd.checks);
-      if (wd?.actuals) setActuals(wd.actuals);
-      setHistory(ls.get("yz-history") || {});
-      setSyncStatus({ ok: true, msg: "✓ Pulled from cloud" });
-    } catch (e) {
-      setSyncStatus({ ok: false, msg: `✗ ${e.message}` });
-    } finally {
-      setSyncing(false);
-    }
-  };
 
   const handleManualSync = async () => {
     if (manualSyncing || !session) return;
@@ -551,9 +493,6 @@ export default function App() {
           <button onClick={handleManualSync} disabled={manualSyncing} style={{ background: manualSyncStatus === "✓ SYNCED" ? "#00FF8818" : "#181818", border: `1px solid ${manualSyncStatus === "✓ SYNCED" ? "#00FF8844" : manualSyncStatus === "✗ FAILED" ? "#FF3B3B44" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: manualSyncing ? "not-allowed" : "pointer", fontSize: 10, color: manualSyncStatus === "✓ SYNCED" ? "#00FF88" : manualSyncStatus === "✗ FAILED" ? "#FF6B6B" : manualSyncing ? "#555" : "#A78BFA", letterSpacing: 1 }}>
             {manualSyncing ? "SYNCING..." : manualSyncStatus || "SYNC"}
           </button>
-          <button onClick={() => { setShowSync(s => !s); setSyncStatus(null); }} style={{ background: showSync ? "#A78BFA18" : "#181818", border: `1px solid ${showSync ? "#A78BFA44" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: showSync ? "#A78BFA" : "#333", letterSpacing: 1 }}>
-            KV
-          </button>
           <button onClick={() => supabase.auth.signOut()} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#444", letterSpacing: 1 }}>
             SIGN OUT
           </button>
@@ -574,38 +513,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Sync panel */}
-      {showSync && (
-        <div style={{ background: "#0e0e0e", borderBottom: "1px solid #1a1a1a", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontSize: 9, color: "#444", letterSpacing: 2 }}>CROSS-DEVICE SYNC · set a shared key on all your devices</div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <input
-              type="text"
-              placeholder="Enter sync key (min 4 chars)"
-              value={syncKey}
-              onChange={e => { setSyncKey(e.target.value); ls.set("yz-sync-key", e.target.value); }}
-              style={{ flex: 1, minWidth: 160, background: "#1a1a1a", border: "1px solid #A78BFA33", borderRadius: 8, padding: "7px 11px", fontSize: 11, color: "#bbb", fontFamily: "'DM Mono', monospace", outline: "none" }}
-            />
-            <button
-              onClick={handlePush}
-              disabled={syncing || syncKey.trim().length < 4}
-              style={{ background: "#A78BFA15", border: "1px solid #A78BFA44", borderRadius: 8, padding: "7px 14px", fontSize: 10, color: syncing || syncKey.trim().length < 4 ? "#444" : "#A78BFA", fontFamily: "'Bebas Neue', cursive", letterSpacing: 1.5, cursor: syncing || syncKey.trim().length < 4 ? "not-allowed" : "pointer" }}
-            >
-              {syncing ? "..." : "↑ PUSH"}
-            </button>
-            <button
-              onClick={handlePull}
-              disabled={syncing || syncKey.trim().length < 4}
-              style={{ background: "#A78BFA15", border: "1px solid #A78BFA44", borderRadius: 8, padding: "7px 14px", fontSize: 10, color: syncing || syncKey.trim().length < 4 ? "#444" : "#A78BFA", fontFamily: "'Bebas Neue', cursive", letterSpacing: 1.5, cursor: syncing || syncKey.trim().length < 4 ? "not-allowed" : "pointer" }}
-            >
-              {syncing ? "..." : "↓ PULL"}
-            </button>
-          </div>
-          {syncStatus && (
-            <div style={{ fontSize: 10, color: syncStatus.ok ? "#00FF88" : "#FF3B3B", letterSpacing: 0.5 }}>{syncStatus.msg}</div>
-          )}
-        </div>
-      )}
 
       {/* Quarters */}
       <div style={{ padding: "12px 20px 0", display: "flex", gap: 6 }}>

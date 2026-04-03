@@ -15,7 +15,8 @@
       "Read(//Users/ahmadyar/.volta/bin/**)",
       "Read(//usr/**)",
       "Bash(pnpm add:*)",
-      "Bash(env)"
+      "Bash(env)",
+      "Bash(git restore:*)"
     ]
   }
 }
