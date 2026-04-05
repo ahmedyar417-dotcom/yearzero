@@ -182,6 +182,7 @@ export default function MacroTracker({ color = "#FF6B35" }) {
 
   const chatEndRef  = useRef(null);
   const fileRef     = useRef(null);
+  const galleryRef  = useRef(null);
   const barcodeRef  = useRef(null);
   const inputRef    = useRef(null);
 
@@ -286,6 +287,31 @@ export default function MacroTracker({ color = "#FF6B35" }) {
         content: [
           { type: "image", source: { type: "base64", media_type: mime, data: b64 } },
           { type: "text",  text: "What are the macros in this meal? Ask me any questions you need, then log it." },
+        ],
+      };
+      const newHistory = [...messages, userMsg];
+      setMessages(newHistory);
+      persistMessages(newHistory);
+      callClaude(newHistory);
+    };
+    reader.readAsDataURL(file);
+  }, [messages, persistMessages, callClaude]);
+
+  // ── Upload from gallery / file picker ────────────────────────────────────
+  const handleGallery = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64  = reader.result.split(",")[1];
+      const mime = file.type || "image/jpeg";
+      const userMsg = {
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: mime, data: b64 } },
+          { type: "text",  text: "I'm uploading a photo of food I ate earlier. Please analyse what you can see, estimate the portions and macros, ask me anything you need to clarify, then log it." },
         ],
       };
       const newHistory = [...messages, userMsg];
@@ -557,13 +583,22 @@ export default function MacroTracker({ color = "#FF6B35" }) {
 
         {/* Input row */}
         <div style={{ display: "flex", gap: 6, padding: "8px 10px", alignItems: "center" }}>
-          {/* Hidden file input — meal photo */}
+          {/* Hidden file input — meal photo (camera) */}
           <input
             ref={fileRef}
             type="file"
             accept="image/*"
             capture="environment"
             onChange={handlePhoto}
+            style={{ display: "none" }}
+          />
+
+          {/* Hidden file input — gallery / file picker (no capture, opens library) */}
+          <input
+            ref={galleryRef}
+            type="file"
+            accept="image/*"
+            onChange={handleGallery}
             style={{ display: "none" }}
           />
 
@@ -609,11 +644,11 @@ export default function MacroTracker({ color = "#FF6B35" }) {
             </svg>
           </button>
 
-          {/* Camera button */}
+          {/* Camera button — live photo */}
           <button
             onClick={() => fileRef.current?.click()}
             disabled={loading}
-            title="Log meal from photo"
+            title="Take a photo of your meal"
             style={{
               width: 34,
               height: 34,
@@ -632,6 +667,33 @@ export default function MacroTracker({ color = "#FF6B35" }) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
               <circle cx="12" cy="13" r="4"/>
+            </svg>
+          </button>
+
+          {/* Gallery button — upload from photo library or file picker */}
+          <button
+            onClick={() => galleryRef.current?.click()}
+            disabled={loading}
+            title="Upload a photo from gallery"
+            style={{
+              width: 34,
+              height: 34,
+              flexShrink: 0,
+              background: "#1a1a1a",
+              border: "1px solid #1e1e1e",
+              borderRadius: 8,
+              cursor: loading ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              opacity: loading ? 0.4 : 1,
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
             </svg>
           </button>
 
