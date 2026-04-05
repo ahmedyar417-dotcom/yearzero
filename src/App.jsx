@@ -243,6 +243,24 @@ const emptyChecks = (secs = SECTIONS) =>
 const emptyActuals = (secs = SECTIONS) =>
   Object.fromEntries(Object.keys(secs).map(k => [k, new Array(secs[k].weekly.length).fill(null)]));
 
+// Normalise per-section checks from old array format to new object (key→bool) format.
+const normAllChecks = (rawChecks, secs) => {
+  if (!rawChecks) return emptyChecks(secs);
+  const result = {};
+  for (const [sec, cur] of Object.entries(rawChecks)) {
+    const section = secs?.[sec];
+    if (!section) { result[sec] = cur; continue; }
+    if (Array.isArray(cur)) {
+      const obj = {};
+      section.daily.forEach((task, i) => { obj[task.key] = cur[i] || false; });
+      result[sec] = obj;
+    } else {
+      result[sec] = cur || {};
+    }
+  }
+  return result;
+};
+
 // ─── InlineEdit ───────────────────────────────────────────────────────────────
 function InlineEdit({ value, onSave, editMode, style = {}, number = false }) {
   const [editing, setEditing] = useState(false);
@@ -465,19 +483,29 @@ function WeekCard({ item, color, onClick, editMode, onUpdateLabel, onUpdateTarge
 function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editMode, onUpdate, onUpdateChecks, onUpdateActuals, onReorder, viewDayOffset }) {
   const s = section;
   const [modal, setModal] = useState(null);
-  const dd = checks.filter(Boolean).length;
+  const dd = Array.isArray(checks) ? checks.filter(Boolean).length : Object.values(checks).filter(Boolean).length;
   const wh = s.weekly.filter((w, i) => { const a = actuals[i]; return a !== null && a !== undefined && a >= w.target; }).length;
   const pct = Math.round(((dd + wh) / Math.max(s.daily.length + s.weekly.length, 1)) * 100);
 
   const addDailyTask = () => {
     const newItem = { label: "New task", unit: "once", key: `d${Date.now()}` };
     onUpdate(sec => ({ ...sec, daily: [...sec.daily, newItem] }));
-    onUpdateChecks([...checks, false]);
+    if (Array.isArray(checks)) {
+      onUpdateChecks([...checks, false]);
+    } else {
+      onUpdateChecks({ ...checks, [newItem.key]: false });
+    }
   };
 
   const deleteDailyTask = (i) => {
+    const taskKey = s.daily[i]?.key;
     onUpdate(sec => ({ ...sec, daily: sec.daily.filter((_, j) => j !== i) }));
-    onUpdateChecks(checks.filter((_, j) => j !== i));
+    if (Array.isArray(checks)) {
+      onUpdateChecks(checks.filter((_, j) => j !== i));
+    } else {
+      const { [taskKey]: _removed, ...rest } = checks;
+      onUpdateChecks(rest);
+    }
   };
 
   const addWeeklyTarget = () => {
@@ -548,9 +576,9 @@ function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editM
               key={item.key}
               label={item.label}
               unit={item.unit}
-              done={!!checks[i]}
+              done={Array.isArray(checks) ? checks[i] || false : checks[item.key] || false}
               color={s.color}
-              onToggle={() => onCheck(sectionKey, i)}
+              onToggle={() => onCheck(sectionKey, item.key)}
               editMode={editMode}
               onUpdateLabel={v => onUpdate(sec => ({ ...sec, daily: sec.daily.map((d, j) => j === i ? { ...d, label: v } : d) }))}
               onUpdateUnit={v => onUpdate(sec => ({ ...sec, daily: sec.daily.map((d, j) => j === i ? { ...d, unit: v } : d) }))}
@@ -793,7 +821,7 @@ export default function App() {
       setDashTitle(ls.get("yz-title") || DEFAULT_TITLE);
       const wd = ls.get(weekKeyForDate(day));
       const dayChecks = getDayChecks(wd, day);
-      setChecks(dayChecks || emptyChecks(savedSections));
+      setChecks(normAllChecks(dayChecks || emptyChecks(savedSections), savedSections));
       if (wd?.actuals) setActuals(wd.actuals);
       setHistory(ls.get("yz-history") || {});
     };
@@ -805,7 +833,7 @@ export default function App() {
     if (!session) return;
     const wd = ls.get(weekKeyForDate(selectedDay));
     const dayChecks = getDayChecks(wd, selectedDay);
-    setChecks(dayChecks || emptyChecks(sections));
+    setChecks(normAllChecks(dayChecks || emptyChecks(sections), sections));
     setActuals(wd?.actuals || emptyActuals(sections));
   }, [selectedDay]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -819,7 +847,7 @@ export default function App() {
     setDashTitle(ls.get("yz-title") || DEFAULT_TITLE);
     const wd = ls.get(weekKeyForDate(day));
     const dayChecks = getDayChecks(wd, day);
-    setChecks(dayChecks || emptyChecks(savedSections));
+    setChecks(normAllChecks(dayChecks || emptyChecks(savedSections), savedSections));
     setActuals(wd?.actuals || emptyActuals(savedSections));
     setHistory(ls.get("yz-history") || {});
     // Notify sub-components (e.g. MacroTracker) to re-read their localStorage state
@@ -905,9 +933,22 @@ export default function App() {
   }, [history, selectedDay, session]);
 
   // ── Check / actuals handlers ─────────────────────────────────────────────────
-  const handleCheck = (sec, idx) => {
-    const next = { ...checks, [sec]: checks[sec].map((v, i) => i === idx ? !v : v) };
-    setChecks(next); persist(next, actuals);
+  const handleCheck = (sec, taskKey) => {
+    const cur = checks[sec] || {};
+    let newSecChecks;
+    if (Array.isArray(cur)) {
+      // Old array format — find index by taskKey
+      const section = sections[sec];
+      const idx = section.daily.findIndex(t => t.key === taskKey);
+      if (idx === -1) return;
+      newSecChecks = cur.map((v, i) => i === idx ? !v : v);
+    } else {
+      // New object format
+      newSecChecks = { ...cur, [taskKey]: !cur[taskKey] };
+    }
+    const next = { ...checks, [sec]: newSecChecks };
+    setChecks(next);
+    persist(next, actuals);
   };
   const handleSave = (sec, idx, val) => {
     const next = { ...actuals, [sec]: actuals[sec].map((v, i) => i === idx ? val : v) };
@@ -996,7 +1037,7 @@ export default function App() {
       setDashTitle(ls.get("yz-title") || DEFAULT_TITLE);
       const wd = ls.get(weekKeyForDate(day));
       const dayChecks = getDayChecks(wd, day);
-      setChecks(dayChecks || emptyChecks(savedSections));
+      setChecks(normAllChecks(dayChecks || emptyChecks(savedSections), savedSections));
       if (wd?.actuals) setActuals(wd.actuals);
       setHistory(ls.get("yz-history") || {});
       setPullStatus("✓ PULLED");
@@ -1044,7 +1085,7 @@ export default function App() {
   };
 
   // ── Derived ──────────────────────────────────────────────────────────────────
-  const allDaily = Object.values(checks).flat();
+  const allDaily = Object.values(checks).flatMap(v => Array.isArray(v) ? v : Object.values(v));
   const dailyDone = allDaily.filter(Boolean).length;
   const dailyPct = Math.round((dailyDone / Math.max(allDaily.length, 1)) * 100);
   const topColor = dailyPct >= 75 ? "#00FF88" : dailyPct >= 45 ? "#FFD700" : "#FF6B35";
@@ -1147,7 +1188,7 @@ export default function App() {
           {Object.entries(sections).map(([sectionKey, section]) => {
             const sectionChecks = checks[sectionKey] || [];
             const sectionActuals = actuals[sectionKey] || [];
-            const dd = sectionChecks.filter(Boolean).length;
+            const dd = Array.isArray(sectionChecks) ? sectionChecks.filter(Boolean).length : Object.values(sectionChecks).filter(Boolean).length;
             const wh = section.weekly.filter((w, i) => {
               const a = sectionActuals[i];
               return a !== null && a !== undefined && a >= w.target;
