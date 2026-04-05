@@ -133,7 +133,7 @@ const getDayChecks = (wd, dayStr) => {
 };
 
 // ─── Config ──────────────────────────────────────────────────────────────────
-const SECTIONS = {
+const DEFAULT_SECTIONS = {
   business: {
     label: "Business", color: "#00FF88", icon: "◈", goal: "Leave Corporate · £15k/month",
     daily: [
@@ -143,10 +143,10 @@ const SECTIONS = {
       { label: "Pipeline update", unit: "10min", key: "d3" },
     ],
     weekly: [
-      { label: "Reach outs", min: 0, max: 700, target: 500, unit: "reach outs", suffix: "/ 500" },
-      { label: "Sales calls", min: 0, max: 15, target: 4, unit: "calls", suffix: "/ 4–6" },
-      { label: "CRM cleanup", min: 0, max: 4, target: 1, unit: "hrs", suffix: "/ 1–2 hrs" },
-      { label: "Authority post", min: 0, max: 5, target: 1, unit: "posts", suffix: "/ 1" },
+      { label: "Reach outs", min: 0, max: 700, target: 500, unit: "reach outs", suffix: "/ 500", key: "w0" },
+      { label: "Sales calls", min: 0, max: 15, target: 4, unit: "calls", suffix: "/ 4-6", key: "w1" },
+      { label: "CRM cleanup", min: 0, max: 4, target: 1, unit: "hrs", suffix: "/ 1-2 hrs", key: "w2" },
+      { label: "Authority post", min: 0, max: 5, target: 1, unit: "posts", suffix: "/ 1", key: "w3" },
     ],
   },
   fatLoss: {
@@ -155,13 +155,13 @@ const SECTIONS = {
       { label: "Log calories ~2000 kcal", unit: "kcal", key: "d0" },
       { label: "≥130g protein", unit: "g", key: "d1" },
       { label: "8,000+ steps", unit: "steps", key: "d2" },
-      { label: "2–3L water", unit: "L", key: "d3" },
+      { label: "2-3L water", unit: "L", key: "d3" },
     ],
     weekly: [
-      { label: "Strength sessions", min: 0, max: 7, target: 3, unit: "sessions", suffix: "/ 3" },
-      { label: "Cardio sessions", min: 0, max: 7, target: 1, unit: "sessions", suffix: "/ 1 opt." },
-      { label: "Weigh-ins", min: 0, max: 7, target: 7, unit: "days", suffix: "/ 7" },
-      { label: "Avg loss (kg)", min: 0, max: 2, target: 0.35, unit: "kg", suffix: "/ −0.35 kg", step: 0.05 },
+      { label: "Strength sessions", min: 0, max: 7, target: 3, unit: "sessions", suffix: "/ 3", key: "w0" },
+      { label: "Cardio sessions", min: 0, max: 7, target: 1, unit: "sessions", suffix: "/ 1 opt.", key: "w1" },
+      { label: "Weigh-ins", min: 0, max: 7, target: 7, unit: "days", suffix: "/ 7", key: "w2" },
+      { label: "Avg loss (kg)", min: 0, max: 2, target: 0.35, unit: "kg", suffix: "/ -0.35 kg", step: 0.05, key: "w3" },
     ],
   },
   savings: {
@@ -173,10 +173,10 @@ const SECTIONS = {
       { label: "CC paid in full", unit: "monthly", key: "d3" },
     ],
     weekly: [
-      { label: "Net worth updated", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check" },
-      { label: "Spending reviewed", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check" },
-      { label: "Business cash logged", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check" },
-      { label: "50% profit transferred", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check" },
+      { label: "Net worth updated", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check", key: "w0" },
+      { label: "Spending reviewed", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check", key: "w1" },
+      { label: "Business cash logged", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check", key: "w2" },
+      { label: "50% profit transferred", min: 0, max: 1, target: 1, unit: "done", suffix: "/ 1", type: "check", key: "w3" },
     ],
   },
   social: {
@@ -185,16 +185,28 @@ const SECTIONS = {
       { label: "Write/refine post", unit: "30min", key: "d0" },
       { label: "Record short video", unit: "20min", key: "d1" },
       { label: "Comments + DMs", unit: "20min", key: "d2" },
-      { label: "Meaningful comments", unit: "5–10", key: "d3" },
+      { label: "Meaningful comments", unit: "5-10", key: "d3" },
     ],
     weekly: [
-      { label: "Main posts", min: 0, max: 10, target: 5, unit: "posts", suffix: "/ 5" },
-      { label: "Reels / videos", min: 0, max: 10, target: 3, unit: "videos", suffix: "/ 3" },
-      { label: "Comments left", min: 0, max: 150, target: 35, unit: "comments", suffix: "/ 35–70" },
-      { label: "DMs sent", min: 0, max: 50, target: 20, unit: "DMs", suffix: "/ 20" },
+      { label: "Main posts", min: 0, max: 10, target: 5, unit: "posts", suffix: "/ 5", key: "w0" },
+      { label: "Reels / videos", min: 0, max: 10, target: 3, unit: "videos", suffix: "/ 3", key: "w1" },
+      { label: "Comments left", min: 0, max: 150, target: 35, unit: "comments", suffix: "/ 35-70", key: "w2" },
+      { label: "DMs sent", min: 0, max: 50, target: 20, unit: "DMs", suffix: "/ 20", key: "w3" },
     ],
   },
 };
+
+// Remove stale yz-sections if it contains a "deen" key (old data), then load from storage or use defaults
+{
+  const _saved = ls.get("yz-sections");
+  if (_saved && "deen" in _saved) {
+    localStorage.removeItem("yz-sections");
+    const _ts = JSON.parse(localStorage.getItem("yz-ts") || "{}");
+    delete _ts["yz-sections"];
+    localStorage.setItem("yz-ts", JSON.stringify(_ts));
+  }
+}
+const SECTIONS = ls.get("yz-sections") || DEFAULT_SECTIONS;
 
 const Q_THEMES = ["Validate · First clients", "Tighten systems · Scale", "Systemize · Case studies", "Transition · Solidify ops"];
 const SCHED = [
