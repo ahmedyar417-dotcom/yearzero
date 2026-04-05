@@ -9,9 +9,32 @@ const ls = {
     try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }
     catch { return null; }
   },
+  // Normal local write — records timestamp so smartSync knows this device owns it
   set(key, val) {
-    try { localStorage.setItem(key, JSON.stringify(val)); return true; }
+    try {
+      localStorage.setItem(key, JSON.stringify(val));
+      const ts = JSON.parse(localStorage.getItem("yz-ts") || "{}");
+      ts[key] = Date.now();
+      localStorage.setItem("yz-ts", JSON.stringify(ts));
+      return true;
+    }
     catch { return false; }
+  },
+  // Write from remote — stamps key with remote's own time so it won't be re-pushed
+  setFromRemote(key, val, remoteMs) {
+    try {
+      localStorage.setItem(key, JSON.stringify(val));
+      const ts = JSON.parse(localStorage.getItem("yz-ts") || "{}");
+      ts[key] = remoteMs;
+      localStorage.setItem("yz-ts", JSON.stringify(ts));
+      return true;
+    }
+    catch { return false; }
+  },
+  // Returns the last local-write timestamp for a key (ms), or 0 if unknown
+  ts(key) {
+    try { return JSON.parse(localStorage.getItem("yz-ts") || "{}")[key] || 0; }
+    catch { return 0; }
   },
 };
 
@@ -29,41 +52,59 @@ const syncToSupabase = async (userId, key, value) => {
   } catch (e) { console.error("[sync] push exception:", key, e); }
 };
 
-const pushAllLocalToSupabase = async (userId) => {
+// ── Push all local yz- keys to Supabase. LOCAL ALWAYS WINS — never reads localStorage. ──
+const pushAllToSupabase = async (userId) => {
   if (!userId) return;
   const upserts = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
-    if (k && k.startsWith("yz-") && k !== "yz-sync-key") {
-      console.log("[sync] queuing local key for push:", k);
+    if (k && k.startsWith("yz-") && k !== "yz-ts") {
       upserts.push({ user_id: userId, key: k, value: ls.get(k), updated_at: new Date().toISOString() });
     }
   }
-  if (!upserts.length) { console.log("[sync] no local yz- keys to push"); return; }
-  console.log("[sync] pushing", upserts.length, "keys to Supabase");
-  try {
-    const { error } = await supabase.from("yz_data").upsert(upserts, { onConflict: "user_id,key" });
-    if (error) console.error("[sync] batch push error:", error);
-    else console.log("[sync] batch push ok —", upserts.length, "keys");
-  } catch (e) { console.error("[sync] batch push exception:", e); }
+  if (!upserts.length) { console.log("[sync] nothing local to push"); return; }
+  const { error } = await supabase.from("yz_data").upsert(upserts, { onConflict: "user_id,key" });
+  if (error) throw error;
+  console.log("[sync] pushed", upserts.length, "keys to Supabase");
 };
 
+// ── Fill in keys that are MISSING locally from Supabase. Never overwrites existing local data. ──
+const pullMissingFromSupabase = async (userId) => {
+  if (!userId) return 0;
+  const { data, error } = await supabase.from("yz_data").select("key, value").eq("user_id", userId);
+  if (error) throw error;
+  let filled = 0;
+  (data || []).forEach(({ key, value }) => {
+    if (localStorage.getItem(key) === null) {
+      ls.setFromRemote(key, value, Date.now());
+      filled++;
+      console.log("[sync] filled missing key from Supabase:", key);
+    } else {
+      console.log("[sync] skipping — key already exists locally:", key);
+    }
+  });
+  console.log("[sync] filled", filled, "missing keys from Supabase");
+  return filled;
+};
+
+// ── Full pull — OVERWRITES all local data with Supabase. Only call after user confirms. ──
 const pullAllFromSupabase = async (userId) => {
   if (!userId) return;
-  console.log("[sync] pulling all rows from Supabase for user", userId);
-  try {
-    const { data, error } = await supabase
-      .from("yz_data")
-      .select("key, value")
-      .eq("user_id", userId);
-    if (error) { console.error("[sync] pull error:", error); return; }
-    if (!data?.length) { console.log("[sync] no rows in Supabase yet"); return; }
-    data.forEach(({ key, value }) => {
-      console.log("[sync] writing to localStorage:", key);
-      ls.set(key, value);
-    });
-    console.log("[sync] pull complete —", data.length, "keys written to localStorage");
-  } catch (e) { console.error("[sync] pull exception:", e); }
+  const { data, error } = await supabase.from("yz_data").select("key, value").eq("user_id", userId);
+  if (error) throw error;
+  (data || []).forEach(({ key, value }) => {
+    ls.setFromRemote(key, value, Date.now());
+    console.log("[sync] overwriting local with Supabase:", key);
+  });
+  console.log("[sync] full pull complete —", (data || []).length, "keys overwritten");
+};
+
+// ── Fetch everything in Supabase for this user (for inspection / recovery). ──
+const fetchSupabaseSnapshot = async (userId) => {
+  if (!userId) return [];
+  const { data, error } = await supabase.from("yz_data").select("key, value, updated_at").eq("user_id", userId);
+  if (error) throw error;
+  return data || [];
 };
 
 const getWeekKey = () => {
@@ -71,6 +112,24 @@ const getWeekKey = () => {
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Monday
   return `yz-week-${d.toISOString().slice(0, 10)}`;
+};
+
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
+const weekKeyForDate = (dateStr) => {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return `yz-week-${d.toISOString().slice(0, 10)}`;
+};
+
+// Extract a single day's checks from week data (handles both old and new formats)
+const getDayChecks = (wd, dayStr) => {
+  if (!wd) return emptyChecks();
+  if (wd.dailyChecks?.[dayStr]) return wd.dailyChecks[dayStr];
+  // Backward compat: old format stored checks at week level (treat as "any day" data)
+  if (wd.checks) return wd.checks;
+  return emptyChecks();
 };
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -320,11 +379,20 @@ function HistoryModal({ history, onClose }) {
           const dateStr = key.replace("yz-week-", "");
           const endD = new Date(dateStr); endD.setDate(endD.getDate() + 6);
           const pcts = Object.keys(SECTIONS).map(sec => {
-            const c = wd.checks?.[sec] || [false, false, false, false];
+            // Aggregate daily checks across all tracked days (new format) or fall back to old
+            let dailyDone = 0, dailyPossible = 0;
+            if (wd.dailyChecks) {
+              const days = Object.values(wd.dailyChecks);
+              days.forEach(dc => { dailyDone += (dc[sec] || []).filter(Boolean).length; });
+              dailyPossible = SECTIONS[sec].daily.length * Math.max(days.length, 1);
+            } else {
+              const c = wd.checks?.[sec] || [];
+              dailyDone = c.filter(Boolean).length;
+              dailyPossible = SECTIONS[sec].daily.length;
+            }
             const a = wd.actuals?.[sec] || [null, null, null, null];
-            const d2 = c.filter(Boolean).length;
             const w2 = SECTIONS[sec].weekly.filter((w, i) => { const v = a[i]; return v !== null && v !== undefined && v >= w.target; }).length;
-            return Math.round(((d2 + w2) / (SECTIONS[sec].daily.length + SECTIONS[sec].weekly.length)) * 100);
+            return Math.round(((dailyDone + w2) / (dailyPossible + SECTIONS[sec].weekly.length)) * 100);
           });
           const overall = Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length);
           const oc = overall >= 75 ? "#00FF88" : overall >= 50 ? "#FFD700" : "#FF6B35";
@@ -351,6 +419,104 @@ function HistoryModal({ history, onClose }) {
   );
 }
 
+function SupabaseInspectorModal({ data, onClose }) {
+  const [expanded, setExpanded] = useState(null);
+  const sorted = [...data].sort((a, b) => a.key.localeCompare(b.key));
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "#000d", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#111", border: "1px solid #2a2a2a", borderRadius: 18, padding: 24, width: "min(720px, 96vw)", maxHeight: "85vh", overflow: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, color: "#fff", letterSpacing: 2 }}>SUPABASE SNAPSHOT</div>
+            <div style={{ fontSize: 9, color: "#555", letterSpacing: 1, marginTop: 2 }}>{sorted.length} keys stored — click any row to inspect value</div>
+          </div>
+          <button onClick={onClose} style={{ background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 8, color: "#666", padding: "7px 14px", cursor: "pointer", fontSize: 10 }}>CLOSE</button>
+        </div>
+        {sorted.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 32, color: "#444", fontSize: 11 }}>No data found in Supabase for this user.</div>
+        ) : sorted.map(row => {
+          const isExp = expanded === row.key;
+          const localExists = localStorage.getItem(row.key) !== null;
+          return (
+            <div key={row.key} style={{ marginBottom: 6, borderRadius: 10, border: "1px solid #1e1e1e", overflow: "hidden" }}>
+              <button onClick={() => setExpanded(isExp ? null : row.key)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#181818", border: "none", cursor: "pointer", textAlign: "left", gap: 10 }}>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: row.key.includes("sections") ? "#FFD700" : "#bbb" }}>{row.key}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  {!localExists && <span style={{ fontSize: 9, color: "#FF6B35", background: "#FF6B3514", border: "1px solid #FF6B3533", borderRadius: 4, padding: "2px 6px" }}>NOT LOCAL</span>}
+                  <span style={{ fontSize: 9, color: "#444" }}>{new Date(row.updated_at).toLocaleString("en-GB")}</span>
+                  <span style={{ color: "#444", fontSize: 10 }}>{isExp ? "▾" : "▸"}</span>
+                </div>
+              </button>
+              {isExp && (
+                <div style={{ padding: 14, background: "#0d0d0d", borderTop: "1px solid #1e1e1e" }}>
+                  <pre style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#666", whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0, maxHeight: 300, overflow: "auto" }}>
+                    {JSON.stringify(row.value, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DayPicker({ selectedDay, onSelect }) {
+  const DAY_NAMES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+  const today = todayStr();
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().slice(0, 10);
+  });
+  return (
+    <div style={{ padding: "12px 20px 0", display: "flex", gap: 7, overflowX: "auto" }}>
+      {days.map(day => {
+        const d = new Date(day + "T00:00:00");
+        const isToday = day === today;
+        const isSel  = day === selectedDay;
+        return (
+          <button
+            key={day}
+            onClick={() => onSelect(day)}
+            style={{
+              flexShrink: 0,
+              width: 44,
+              padding: "8px 0",
+              borderRadius: 10,
+              border: `1px solid ${isSel ? "#00FF88" : isToday ? "#2a2a2a" : "#1a1a1a"}`,
+              background: isSel ? "#00FF8812" : isToday ? "#181818" : "#111",
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 3,
+            }}
+          >
+            <span style={{ fontSize: 8, color: isSel ? "#00FF88" : "#444", letterSpacing: 1 }}>
+              {DAY_NAMES[d.getDay()]}
+            </span>
+            <span style={{
+              fontFamily: "'Bebas Neue', cursive",
+              fontSize: 18,
+              color: isSel ? "#00FF88" : isToday ? "#bbb" : "#444",
+              letterSpacing: 1,
+              lineHeight: 1,
+              filter: isSel ? "drop-shadow(0 0 5px #00FF8888)" : "none",
+            }}>
+              {d.getDate()}
+            </span>
+            {isToday && !isSel && (
+              <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#333" }} />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const today = new Date();
@@ -361,6 +527,7 @@ export default function App() {
   const WEEK_KEY = getWeekKey();
 
   const [session, setSession] = useState(undefined); // undefined = checking
+  const [selectedDay, setSelectedDay] = useState(todayStr);
   const [checks, setChecks] = useState(emptyChecks);
   const [actuals, setActuals] = useState(emptyActuals);
   const [history, setHistory] = useState({});
@@ -368,9 +535,12 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [manualSyncing, setManualSyncing] = useState(false);
   const [manualSyncStatus, setManualSyncStatus] = useState(null);
+  const [pulling, setPulling] = useState(false);
+  const [pullStatus, setPullStatus] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [forcePushing, setForcePushing] = useState(false);
   const [forcePushStatus, setForcePushStatus] = useState(null);
+  const [supabaseData, setSupabaseData] = useState(null); // null = closed
 
   // Auth: check session on mount, subscribe to changes
   useEffect(() => {
@@ -381,47 +551,88 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load data on login: push local up, pull remote down, then render
+  // Load data on login: push local → Supabase first, then fill any keys missing locally.
+  // LOCAL DATA ALWAYS WINS — never overwrites existing localStorage keys.
   useEffect(() => {
     if (!session) return;
     const load = async () => {
       const uid = session.user.id;
-      console.log("[sync] login detected, starting sync for user", uid);
-      // 1. Push all local yz- keys to Supabase first (so local data is never lost)
-      await pushAllLocalToSupabase(uid);
-      // 2. Pull all Supabase rows into localStorage (remote wins — overwrites local)
-      await pullAllFromSupabase(uid);
-      // 3. Read final merged state and render
-      const wd = ls.get(WEEK_KEY);
-      if (wd?.checks) setChecks(wd.checks);
+      console.log("[sync] login: pushing local data to Supabase");
+      try { await pushAllToSupabase(uid); } catch (e) { console.error("[sync] login push failed:", e); }
+      console.log("[sync] login: filling any missing local keys from Supabase");
+      try { await pullMissingFromSupabase(uid); } catch (e) { console.error("[sync] login fill failed:", e); }
+      const day = todayStr();
+      setSelectedDay(day);
+      const wd = ls.get(weekKeyForDate(day));
+      setChecks(getDayChecks(wd, day));
       if (wd?.actuals) setActuals(wd.actuals);
       setHistory(ls.get("yz-history") || {});
-      console.log("[sync] dashboard ready");
+      console.log("[sync] dashboard ready — local data preserved");
     };
     load();
   }, [session?.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reload checks when the user switches to a different day
+  useEffect(() => {
+    if (!session) return;
+    const wd = ls.get(weekKeyForDate(selectedDay));
+    setChecks(getDayChecks(wd, selectedDay));
+    setActuals(wd?.actuals || emptyActuals());
+  }, [selectedDay]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // SYNC = push local → Supabase only. Never touches localStorage.
   const handleManualSync = async () => {
     if (manualSyncing || !session) return;
-    const uid = session.user.id;
     setManualSyncing(true); setManualSyncStatus(null);
     try {
-      console.log("[sync] manual sync started");
-      await pushAllLocalToSupabase(uid);
-      await pullAllFromSupabase(uid);
-      const wd = ls.get(WEEK_KEY);
-      if (wd?.checks) setChecks(wd.checks);
-      if (wd?.actuals) setActuals(wd.actuals);
-      setHistory(ls.get("yz-history") || {});
-      setManualSyncStatus("✓ SYNCED");
-      console.log("[sync] manual sync complete");
+      await pushAllToSupabase(session.user.id);
+      setManualSyncStatus("✓ PUSHED");
       setTimeout(() => setManualSyncStatus(null), 3000);
     } catch (e) {
-      console.error("[sync] manual sync failed:", e);
+      console.error("[sync] push failed:", e);
       setManualSyncStatus("✗ FAILED");
       setTimeout(() => setManualSyncStatus(null), 3000);
     } finally {
       setManualSyncing(false);
+    }
+  };
+
+  // PULL = overwrite local with Supabase. User must confirm first.
+  const handlePull = async () => {
+    if (pulling || !session) return;
+    const confirmed = window.confirm(
+      "⚠️ PULL FROM SUPABASE\n\nThis will overwrite ALL your local data with what is stored in Supabase.\n\nYour current local data will be lost.\n\nAre you sure?"
+    );
+    if (!confirmed) return;
+    setPulling(true); setPullStatus(null);
+    try {
+      await pullAllFromSupabase(session.user.id);
+      const day = todayStr();
+      setSelectedDay(day);
+      const wd = ls.get(weekKeyForDate(day));
+      setChecks(getDayChecks(wd, day));
+      if (wd?.actuals) setActuals(wd.actuals);
+      setHistory(ls.get("yz-history") || {});
+      setPullStatus("✓ PULLED");
+      setTimeout(() => setPullStatus(null), 3000);
+    } catch (e) {
+      console.error("[sync] pull failed:", e);
+      setPullStatus("✗ FAILED");
+      setTimeout(() => setPullStatus(null), 3000);
+    } finally {
+      setPulling(false);
+    }
+  };
+
+  // CHECK DB = fetch Supabase snapshot for inspection / data recovery
+  const handleCheckSupabase = async () => {
+    if (!session) return;
+    try {
+      const rows = await fetchSupabaseSnapshot(session.user.id);
+      setSupabaseData(rows);
+    } catch (e) {
+      console.error("[sync] fetch snapshot failed:", e);
+      alert("Failed to fetch Supabase data: " + e.message);
     }
   };
 
@@ -434,7 +645,14 @@ export default function App() {
       const { error: delErr } = await supabase.from("yz_data").delete().eq("user_id", uid);
       if (delErr) throw delErr;
       console.log("[sync] force push: deleted all rows, now pushing local data");
-      await pushAllLocalToSupabase(uid);
+      const upserts = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("yz-") && k !== "yz-ts") {
+          upserts.push({ user_id: uid, key: k, value: ls.get(k), updated_at: new Date().toISOString() });
+        }
+      }
+      if (upserts.length) await supabase.from("yz_data").upsert(upserts, { onConflict: "user_id,key" });
       setForcePushStatus("✓ DONE");
       console.log("[sync] force push complete");
       setTimeout(() => setForcePushStatus(null), 3000);
@@ -449,17 +667,25 @@ export default function App() {
 
   const persist = useCallback((nc, na) => {
     const userId = session?.user?.id;
-    const wd = { checks: nc, actuals: na, savedAt: Date.now() };
-    ls.set(WEEK_KEY, wd);
-    syncToSupabase(userId, WEEK_KEY, wd);
-    const newHist = { ...history, [WEEK_KEY]: wd };
+    const wk = weekKeyForDate(selectedDay);
+    const existing = ls.get(wk) || {};
+    // Build dailyChecks, migrating old single-checks format if present
+    const dailyChecks = existing.dailyChecks ? { ...existing.dailyChecks } : {};
+    if (existing.checks && !existing.dailyChecks) {
+      dailyChecks[todayStr()] = existing.checks; // migrate old data to today
+    }
+    dailyChecks[selectedDay] = nc;
+    const wd = { dailyChecks, actuals: na, savedAt: Date.now() };
+    ls.set(wk, wd);
+    syncToSupabase(userId, wk, wd);
+    const newHist = { ...history, [wk]: wd };
     const trimmed = Object.fromEntries(Object.keys(newHist).sort().reverse().slice(0, 52).map(k => [k, newHist[k]]));
     ls.set("yz-history", trimmed);
     syncToSupabase(userId, "yz-history", trimmed);
     setHistory(trimmed);
     setSaveFlash(true);
     setTimeout(() => setSaveFlash(false), 1400);
-  }, [history, WEEK_KEY, session]);
+  }, [history, selectedDay, session]);
 
   const handleCheck = (sec, idx) => {
     const next = { ...checks, [sec]: checks[sec].map((v, i) => i === idx ? !v : v) };
@@ -501,6 +727,7 @@ export default function App() {
       `}</style>
 
       {showHistory && <HistoryModal history={history} onClose={() => setShowHistory(false)} />}
+      {supabaseData !== null && <SupabaseInspectorModal data={supabaseData} onClose={() => setSupabaseData(null)} />}
 
       {/* Save flash */}
       <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 5000, background: "#141414", border: "1px solid #00FF8855", borderRadius: 10, padding: "9px 16px", fontSize: 11, color: "#00FF88", letterSpacing: 1, transition: "opacity 0.3s", opacity: saveFlash ? 1 : 0, pointerEvents: "none" }}>
@@ -515,11 +742,17 @@ export default function App() {
           <button onClick={() => setShowHistory(true)} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#555", letterSpacing: 1 }}>
             HISTORY {pastWeeks > 0 ? `· ${pastWeeks}wk` : ""}
           </button>
-          <button onClick={handleManualSync} disabled={manualSyncing} style={{ background: manualSyncStatus === "✓ SYNCED" ? "#00FF8818" : "#181818", border: `1px solid ${manualSyncStatus === "✓ SYNCED" ? "#00FF8844" : manualSyncStatus === "✗ FAILED" ? "#FF3B3B44" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: manualSyncing ? "not-allowed" : "pointer", fontSize: 10, color: manualSyncStatus === "✓ SYNCED" ? "#00FF88" : manualSyncStatus === "✗ FAILED" ? "#FF6B6B" : manualSyncing ? "#555" : "#A78BFA", letterSpacing: 1 }}>
-            {manualSyncing ? "SYNCING..." : manualSyncStatus || "SYNC"}
+          <button onClick={handleManualSync} disabled={manualSyncing} style={{ background: manualSyncStatus === "✓ PUSHED" ? "#00FF8818" : "#181818", border: `1px solid ${manualSyncStatus === "✓ PUSHED" ? "#00FF8844" : manualSyncStatus === "✗ FAILED" ? "#FF3B3B44" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: manualSyncing ? "not-allowed" : "pointer", fontSize: 10, color: manualSyncStatus === "✓ PUSHED" ? "#00FF88" : manualSyncStatus === "✗ FAILED" ? "#FF6B6B" : manualSyncing ? "#555" : "#A78BFA", letterSpacing: 1 }}>
+            {manualSyncing ? "PUSHING..." : manualSyncStatus || "SYNC"}
+          </button>
+          <button onClick={handlePull} disabled={pulling} style={{ background: pullStatus === "✓ PULLED" ? "#00FF8818" : "#181818", border: `1px solid ${pullStatus === "✓ PULLED" ? "#00FF8844" : pullStatus === "✗ FAILED" ? "#FF3B3B44" : "#FF6B3533"}`, borderRadius: 7, padding: "4px 11px", cursor: pulling ? "not-allowed" : "pointer", fontSize: 10, color: pullStatus === "✓ PULLED" ? "#00FF88" : pullStatus === "✗ FAILED" ? "#FF6B6B" : pulling ? "#555" : "#FF6B35", letterSpacing: 1 }}>
+            {pulling ? "PULLING..." : pullStatus || "PULL"}
           </button>
           <button onClick={() => { setEditMode(m => !m); setForcePushStatus(null); }} style={{ background: editMode ? "#FF6B3518" : "#181818", border: `1px solid ${editMode ? "#FF6B3544" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: editMode ? "#FF6B35" : "#444", letterSpacing: 1 }}>
             {editMode ? "EDITING" : "EDIT"}
+          </button>
+          <button onClick={handleCheckSupabase} style={{ background: "#FFD70014", border: "1px solid #FFD70033", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#FFD700", letterSpacing: 1 }}>
+            CHECK DB
           </button>
           {editMode && (
             <button onClick={handleForcePush} disabled={forcePushing} style={{ background: forcePushStatus === "✓ DONE" ? "#00FF8818" : "#FF3B3B14", border: `1px solid ${forcePushStatus === "✓ DONE" ? "#00FF8844" : forcePushStatus === "✗ FAILED" ? "#FF3B3B88" : "#FF3B3B44"}`, borderRadius: 7, padding: "4px 11px", cursor: forcePushing ? "not-allowed" : "pointer", fontSize: 10, color: forcePushStatus === "✓ DONE" ? "#00FF88" : forcePushing ? "#555" : "#FF6B6B", letterSpacing: 1 }}>
@@ -532,8 +765,12 @@ export default function App() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 8, color: "#444", letterSpacing: 2 }}>TODAY</div>
-            <div style={{ fontSize: 11, color: "#aaa" }}>{dayLabel.toUpperCase()} · WK {weekNum}</div>
+            <div style={{ fontSize: 8, color: selectedDay === todayStr() ? "#444" : "#A78BFA", letterSpacing: 2 }}>
+              {selectedDay === todayStr() ? "TODAY" : "EDITING"}
+            </div>
+            <div style={{ fontSize: 11, color: selectedDay === todayStr() ? "#aaa" : "#A78BFA" }}>
+              {dayLabel.toUpperCase()} · WK {weekNum}
+            </div>
           </div>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 8, color: "#444", letterSpacing: 2 }}>DAILY</div>
@@ -572,6 +809,21 @@ export default function App() {
         </div>
         <span style={{ fontSize: 8, color: "#333", letterSpacing: 1, flexShrink: 0 }}>{Math.round((weekNum / 52) * 100)}%</span>
       </div>
+
+      {/* Day picker */}
+      <DayPicker selectedDay={selectedDay} onSelect={setSelectedDay} />
+
+      {/* Past-day banner */}
+      {selectedDay !== todayStr() && (
+        <div style={{ margin: "10px 20px 0", padding: "8px 14px", background: "#A78BFA12", border: "1px solid #A78BFA33", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 11, color: "#A78BFA", letterSpacing: 1 }}>
+            Editing {new Date(selectedDay + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" })}
+          </span>
+          <button onClick={() => setSelectedDay(todayStr())} style={{ background: "none", border: "1px solid #A78BFA44", borderRadius: 6, padding: "3px 10px", fontSize: 10, color: "#A78BFA", cursor: "pointer", letterSpacing: 1 }}>
+            BACK TO TODAY
+          </button>
+        </div>
+      )}
 
       {/* Goal cards */}
       <div style={{ padding: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>

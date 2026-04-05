@@ -37,7 +37,14 @@ const ls = {
     catch { return null; }
   },
   set(key, val) {
-    try { localStorage.setItem(key, JSON.stringify(val)); }
+    try {
+      localStorage.setItem(key, JSON.stringify(val));
+      // Keep a shared write-timestamp map so App.jsx smartSync can compare this device's
+      // data age against Supabase updated_at when deciding push vs pull.
+      const ts = JSON.parse(localStorage.getItem("yz-ts") || "{}");
+      ts[key] = Date.now();
+      localStorage.setItem("yz-ts", JSON.stringify(ts));
+    }
     catch { /* quota exceeded — silent */ }
   },
 };
@@ -175,6 +182,7 @@ export default function MacroTracker({ color = "#FF6B35" }) {
 
   const chatEndRef  = useRef(null);
   const fileRef     = useRef(null);
+  const barcodeRef  = useRef(null);
   const inputRef    = useRef(null);
 
   // ── Load / day-reset on mount ──────────────────────────────────────────────
@@ -286,6 +294,110 @@ export default function MacroTracker({ color = "#FF6B35" }) {
       callClaude(newHistory);
     };
     reader.readAsDataURL(file);
+  }, [messages, persistMessages, callClaude]);
+
+  // ── Barcode scan ───────────────────────────────────────────────────────────
+  const handleBarcode = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      let barcode = null;
+
+      // 1) Try native BarcodeDetector (Chrome / Android)
+      if ("BarcodeDetector" in window) {
+        try {
+          const bitmap = await createImageBitmap(file);
+          const detector = new BarcodeDetector({
+            formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"],
+          });
+          const codes = await detector.detect(bitmap);
+          if (codes.length > 0) barcode = codes[0].rawValue;
+        } catch {
+          /* detector failed — fall through to Claude */
+        }
+      }
+
+      // 2) Fallback: ask Claude to read the barcode digits from the image
+      if (!barcode) {
+        const b64 = await new Promise((res, rej) => {
+          const reader = new FileReader();
+          reader.onload = () => res(reader.result.split(",")[1]);
+          reader.onerror = rej;
+          reader.readAsDataURL(file);
+        });
+        const mime = file.type || "image/jpeg";
+        const resp = await fetch("/api/claude", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 60,
+            system: "Read the barcode in the image. Reply with ONLY the numeric barcode digits (e.g. 5901234123457). If no barcode is visible, reply: NONE",
+            messages: [{
+              role: "user",
+              content: [
+                { type: "image", source: { type: "base64", media_type: mime, data: b64 } },
+                { type: "text", text: "What is the barcode number?" },
+              ],
+            }],
+          }),
+        });
+        const rdata = await resp.json();
+        const raw = (rdata?.content?.[0]?.text || "").trim().replace(/\D/g, "");
+        if (raw.length >= 6) barcode = raw;
+      }
+
+      if (!barcode) {
+        const msg = { role: "assistant", content: "Couldn't read a barcode from that image. Make sure the barcode is clear and well-lit, then try again." };
+        setMessages(prev => { const next = [...prev, msg]; persistMessages(next); return next; });
+        setLoading(false);
+        return;
+      }
+
+      // 3) Look up product on Open Food Facts
+      const ofRes = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+      const ofData = await ofRes.json();
+
+      if (ofData.status !== 1 || !ofData.product) {
+        const msg = { role: "assistant", content: `Barcode ${barcode} scanned — but this product isn't in the Open Food Facts database yet. What is it? Describe it and I'll estimate the macros.` };
+        setMessages(prev => { const next = [...prev, msg]; persistMessages(next); return next; });
+        setLoading(false);
+        return;
+      }
+
+      // 4) Build nutrition context and pass to Claude to ask portion + log
+      const p = ofData.product;
+      const n = p.nutriments || {};
+      const name = p.product_name || p.product_name_en || "Scanned product";
+      const cal100     = Math.round(n["energy-kcal_100g"] ?? (n["energy_100g"] ?? 0) / 4.184);
+      const protein100 = +(n.proteins_100g ?? 0).toFixed(1);
+      const carbs100   = +(n.carbohydrates_100g ?? 0).toFixed(1);
+      const fat100     = +(n.fat_100g ?? 0).toFixed(1);
+      const fibre100   = +(n.fiber_100g ?? n["fiber_100g"] ?? 0).toFixed(1);
+      const sugar100   = +(n.sugars_100g ?? 0).toFixed(1);
+      const sodium100  = Math.round((n.sodium_100g ?? 0) * 1000);
+      const satFat100  = +(n["saturated-fat_100g"] ?? 0).toFixed(1);
+
+      const userMsg = {
+        role: "user",
+        content: `I scanned a barcode for: ${name}. Nutrition per 100g — ${cal100} kcal, ${protein100}g protein, ${carbs100}g carbs, ${fat100}g fat, ${fibre100}g fibre, ${sugar100}g sugar, ${sodium100}mg sodium, ${satFat100}g sat fat. Ask me how much I had, then log it.`,
+      };
+      const newHistory = [...messages, userMsg];
+      setMessages(newHistory);
+      persistMessages(newHistory);
+      callClaude(newHistory); // callClaude manages setLoading(false) in its finally block
+
+    } catch (err) {
+      const msg = { role: "assistant", content: `⚠ Barcode scan failed: ${err.message}` };
+      setMessages(prev => { const next = [...prev, msg]; persistMessages(next); return next; });
+      setError(err.message);
+      setLoading(false);
+    }
   }, [messages, persistMessages, callClaude]);
 
   // ── Delete meal ────────────────────────────────────────────────────────────
@@ -445,7 +557,7 @@ export default function MacroTracker({ color = "#FF6B35" }) {
 
         {/* Input row */}
         <div style={{ display: "flex", gap: 6, padding: "8px 10px", alignItems: "center" }}>
-          {/* Hidden file input */}
+          {/* Hidden file input — meal photo */}
           <input
             ref={fileRef}
             type="file"
@@ -454,6 +566,48 @@ export default function MacroTracker({ color = "#FF6B35" }) {
             onChange={handlePhoto}
             style={{ display: "none" }}
           />
+
+          {/* Hidden file input — barcode scan */}
+          <input
+            ref={barcodeRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleBarcode}
+            style={{ display: "none" }}
+          />
+
+          {/* Barcode scan button */}
+          <button
+            onClick={() => barcodeRef.current?.click()}
+            disabled={loading}
+            title="Scan barcode"
+            style={{
+              width: 34,
+              height: 34,
+              flexShrink: 0,
+              background: "#1a1a1a",
+              border: "1px solid #1e1e1e",
+              borderRadius: 8,
+              cursor: loading ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              opacity: loading ? 0.4 : 1,
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 9V5a2 2 0 0 1 2-2h1"/>
+              <path d="M3 15v4a2 2 0 0 0 2 2h1"/>
+              <path d="M21 9V5a2 2 0 0 0-2-2h-1"/>
+              <path d="M21 15v4a2 2 0 0 1-2 2h-1"/>
+              <line x1="7" y1="3" x2="7" y2="21"/>
+              <line x1="11" y1="3" x2="11" y2="21"/>
+              <line x1="13" y1="3" x2="13" y2="21"/>
+              <line x1="17" y1="3" x2="17" y2="21"/>
+            </svg>
+          </button>
 
           {/* Camera button */}
           <button
