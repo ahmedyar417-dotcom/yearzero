@@ -462,7 +462,7 @@ function WeekCard({ item, color, onClick, editMode, onUpdateLabel, onUpdateTarge
 }
 
 // ─── GoalCard ─────────────────────────────────────────────────────────────────
-function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editMode, onUpdate, onUpdateChecks, onUpdateActuals }) {
+function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editMode, onUpdate, onUpdateChecks, onUpdateActuals, onReorder }) {
   const s = section;
   const [modal, setModal] = useState(null);
   const dd = checks.filter(Boolean).length;
@@ -518,9 +518,25 @@ function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editM
             <InlineEdit value={s.goal} onSave={v => onUpdate(sec => ({ ...sec, goal: v }))} editMode={editMode}
               style={{ color: "#fff", fontFamily: "'Bebas Neue', cursive", fontSize: 20, letterSpacing: 1 }} />
           </div>
-          <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginLeft: 12 }}>
-            <Ring pct={pct} color={s.color} size={60} />
-            <span style={{ position: "absolute", fontFamily: "'Bebas Neue', cursive", fontSize: 13, color: "#fff", letterSpacing: 1 }}>{pct}%</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 12 }}>
+            {editMode && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <button
+                  onClick={() => onReorder(-1)}
+                  style={{ width: 24, height: 24, background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 5, color: "#555", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}
+                  title="Move up"
+                >▲</button>
+                <button
+                  onClick={() => onReorder(1)}
+                  style={{ width: 24, height: 24, background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 5, color: "#555", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}
+                  title="Move down"
+                >▼</button>
+              </div>
+            )}
+            <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Ring pct={pct} color={s.color} size={60} />
+              <span style={{ position: "absolute", fontFamily: "'Bebas Neue', cursive", fontSize: 13, color: "#fff", letterSpacing: 1 }}>{pct}%</span>
+            </div>
           </div>
         </div>
 
@@ -920,6 +936,22 @@ export default function App() {
     });
   };
 
+  const handleReorderSection = (key, dir) => {
+    const keys = Object.keys(sections);
+    const idx = keys.indexOf(key);
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= keys.length) return;
+    const newKeys = [...keys];
+    [newKeys[idx], newKeys[newIdx]] = [newKeys[newIdx], newKeys[idx]];
+    const reordered = {};
+    newKeys.forEach(k => { reordered[k] = sections[k]; });
+    setSections(reordered);
+    ls.set("yz-sections", reordered);
+    ls.set("yz-section-order", newKeys);
+    syncToSupabase(session?.user?.id, "yz-sections", reordered);
+    syncToSupabase(session?.user?.id, "yz-section-order", newKeys);
+  };
+
   const updateSched = (updater) => {
     setSched(prev => {
       const next = updater(prev);
@@ -1093,7 +1125,7 @@ export default function App() {
             SIGN OUT
           </button>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 8, color: selectedDay === todayStr() ? "#444" : "#A78BFA", letterSpacing: 2 }}>
               {selectedDay === todayStr() ? "TODAY" : "EDITING"}
@@ -1110,6 +1142,28 @@ export default function App() {
             <Ring pct={dailyPct} color={topColor} size={42} />
             <span style={{ position: "absolute", fontSize: 8, color: "#fff", fontWeight: 700 }}>{dailyDone}/{allDaily.length}</span>
           </div>
+          {/* Per-category rings */}
+          <div style={{ width: 1, height: 40, background: "#1e1e1e", flexShrink: 0 }} />
+          {Object.entries(sections).map(([sectionKey, section]) => {
+            const sectionChecks = checks[sectionKey] || [];
+            const sectionActuals = actuals[sectionKey] || [];
+            const dd = sectionChecks.filter(Boolean).length;
+            const wh = section.weekly.filter((w, i) => {
+              const a = sectionActuals[i];
+              return a !== null && a !== undefined && a >= w.target;
+            }).length;
+            const total = section.daily.length + section.weekly.length;
+            const pct = total > 0 ? Math.round(((dd + wh) / total) * 100) : 0;
+            return (
+              <div key={sectionKey} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Ring pct={pct} color={section.color} size={34} />
+                  <span style={{ position: "absolute", fontSize: 7, color: "#fff", fontWeight: 700 }}>{pct}%</span>
+                </div>
+                <span style={{ fontSize: 9, color: section.color, lineHeight: 1 }}>{section.icon}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -1178,6 +1232,7 @@ export default function App() {
             onUpdate={(updater) => updateSection(key, updater)}
             onUpdateChecks={(newArr) => handleUpdateChecks(key, newArr)}
             onUpdateActuals={(newArr) => handleUpdateActuals(key, newArr)}
+            onReorder={(dir) => handleReorderSection(key, dir)}
           />
         ))}
       </div>
