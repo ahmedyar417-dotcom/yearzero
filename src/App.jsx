@@ -733,25 +733,58 @@ function SupabaseInspectorModal({ data, onClose }) {
 function DayPicker({ selectedDay, onSelect }) {
   const DAY_NAMES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
   const today = todayStr();
+
+  const getMondayOf = (dateStr) => {
+    const d = new Date(dateStr + "T00:00:00");
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return d.toISOString().slice(0, 10);
+  };
+
+  const [weekStart, setWeekStart] = useState(() => getMondayOf(selectedDay));
+
+  useEffect(() => {
+    setWeekStart(getMondayOf(selectedDay));
+  }, [selectedDay]);
+
   const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
+    const d = new Date(weekStart + "T00:00:00");
+    d.setDate(d.getDate() + i);
     return d.toISOString().slice(0, 10);
   });
+
+  const shiftWeek = (delta) => {
+    const d = new Date(weekStart + "T00:00:00");
+    d.setDate(d.getDate() + delta * 7);
+    setWeekStart(d.toISOString().slice(0, 10));
+  };
+
+  const navBtn = (label, onClick) => (
+    <button onClick={onClick} style={{ flexShrink: 0, width: 28, height: 44, borderRadius: 8, border: "1px solid #1e1e1e", background: "#111", color: "#555", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+      {label}
+    </button>
+  );
+
   return (
-    <div style={{ padding: "12px 20px 0", display: "flex", gap: 7, overflowX: "auto" }}>
-      {days.map(day => {
-        const d = new Date(day + "T00:00:00");
-        const isToday = day === today;
-        const isSel = day === selectedDay;
-        return (
-          <button key={day} onClick={() => onSelect(day)} style={{ flexShrink: 0, width: 44, padding: "8px 0", borderRadius: 10, border: `1px solid ${isSel ? "#00FF88" : isToday ? "#2a2a2a" : "#1a1a1a"}`, background: isSel ? "#00FF8812" : isToday ? "#181818" : "#111", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-            <span style={{ fontSize: 8, color: isSel ? "#00FF88" : "#444", letterSpacing: 1 }}>{DAY_NAMES[d.getDay()]}</span>
-            <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: isSel ? "#00FF88" : isToday ? "#bbb" : "#444", letterSpacing: 1, lineHeight: 1, filter: isSel ? "drop-shadow(0 0 5px #00FF8888)" : "none" }}>{d.getDate()}</span>
-            {isToday && !isSel && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#333" }} />}
-          </button>
-        );
-      })}
+    <div style={{ padding: "12px 20px 0", display: "flex", alignItems: "center", gap: 6 }}>
+      {navBtn("‹", () => shiftWeek(-1))}
+      <div style={{ display: "flex", gap: 6, flex: 1, overflowX: "auto" }}>
+        {days.map(day => {
+          const d = new Date(day + "T00:00:00");
+          const isToday = day === today;
+          const isSel = day === selectedDay;
+          const isFuture = day > today;
+          const selColor = isFuture ? "#00D4FF" : "#00FF88";
+          return (
+            <button key={day} onClick={() => onSelect(day)} style={{ flexShrink: 0, flex: 1, minWidth: 40, padding: "8px 0", borderRadius: 10, border: `1px solid ${isSel ? selColor : isToday ? "#2a2a2a" : "#1a1a1a"}`, background: isSel ? selColor + "12" : isToday ? "#181818" : "#111", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+              <span style={{ fontSize: 8, color: isSel ? selColor : isFuture ? "#2a4a55" : "#444", letterSpacing: 1 }}>{DAY_NAMES[d.getDay()]}</span>
+              <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: isSel ? selColor : isToday ? "#bbb" : isFuture ? "#334" : "#444", letterSpacing: 1, lineHeight: 1, filter: isSel ? `drop-shadow(0 0 5px ${selColor}88)` : "none" }}>{d.getDate()}</span>
+              {isToday && !isSel && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#333" }} />}
+              {isFuture && !isSel && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#1a2a33" }} />}
+            </button>
+          );
+        })}
+      </div>
+      {navBtn("›", () => shiftWeek(1))}
     </div>
   );
 }
@@ -1168,10 +1201,10 @@ export default function App() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 8, color: selectedDay === todayStr() ? "#444" : "#A78BFA", letterSpacing: 2 }}>
-              {selectedDay === todayStr() ? "TODAY" : "EDITING"}
+            <div style={{ fontSize: 8, color: selectedDay === todayStr() ? "#444" : selectedDay > todayStr() ? "#00D4FF" : "#A78BFA", letterSpacing: 2 }}>
+              {selectedDay === todayStr() ? "TODAY" : selectedDay > todayStr() ? "PLANNING" : "EDITING"}
             </div>
-            <div style={{ fontSize: 11, color: selectedDay === todayStr() ? "#aaa" : "#A78BFA" }}>
+            <div style={{ fontSize: 11, color: selectedDay === todayStr() ? "#aaa" : selectedDay > todayStr() ? "#00D4FF" : "#A78BFA" }}>
               {dayLabel.toUpperCase()} · WK {weekNum}
             </div>
           </div>
@@ -1237,17 +1270,22 @@ export default function App() {
       {/* Day picker */}
       <DayPicker selectedDay={selectedDay} onSelect={setSelectedDay} />
 
-      {/* Past-day banner */}
-      {selectedDay !== todayStr() && (
-        <div style={{ margin: "10px 20px 0", padding: "8px 14px", background: "#A78BFA12", border: "1px solid #A78BFA33", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 11, color: "#A78BFA", letterSpacing: 1 }}>
-            Editing {new Date(selectedDay + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" })}
-          </span>
-          <button onClick={() => setSelectedDay(todayStr())} style={{ background: "none", border: "1px solid #A78BFA44", borderRadius: 6, padding: "3px 10px", fontSize: 10, color: "#A78BFA", cursor: "pointer", letterSpacing: 1 }}>
-            BACK TO TODAY
-          </button>
-        </div>
-      )}
+      {/* Past-day / future-day banner */}
+      {selectedDay !== todayStr() && (() => {
+        const isFuture = selectedDay > todayStr();
+        const bannerColor = isFuture ? "#00D4FF" : "#A78BFA";
+        const formattedDate = new Date(selectedDay + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" });
+        return (
+          <div style={{ margin: "10px 20px 0", padding: "8px 14px", background: bannerColor + "12", border: `1px solid ${bannerColor}33`, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 11, color: bannerColor, letterSpacing: 1, fontWeight: isFuture ? 600 : 400 }}>
+              {isFuture ? `PLANNING ${formattedDate.toUpperCase()}` : `Editing ${formattedDate}`}
+            </span>
+            <button onClick={() => setSelectedDay(todayStr())} style={{ background: "none", border: `1px solid ${bannerColor}44`, borderRadius: 6, padding: "3px 10px", fontSize: 10, color: bannerColor, cursor: "pointer", letterSpacing: 1 }}>
+              BACK TO TODAY
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Edit mode hint */}
       {editMode && (
