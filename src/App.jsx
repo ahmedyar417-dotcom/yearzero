@@ -556,7 +556,13 @@ export default function App() {
 
   // Auth: check session on mount, subscribe to changes
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => setSession(s ?? null));
+    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
+      if (s) { setSession(s); return; }
+      // No session found — try refreshing the token (handles mobile where the stored
+      // token may have expired but a refresh token is still available)
+      const { data: { session: refreshed } } = await supabase.auth.refreshSession();
+      setSession(refreshed ?? null);
+    });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s ?? null);
     });
