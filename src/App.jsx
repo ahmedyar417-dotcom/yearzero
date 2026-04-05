@@ -3,13 +3,12 @@ import MacroTracker from "./MacroTracker";
 import { supabase } from "./supabase";
 import AuthScreen from "./AuthScreen";
 
-// ─── localStorage persistence ────────────────────────────────────────────────
+// ─── localStorage persistence ─────────────────────────────────────────────────
 const ls = {
   get(key) {
     try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }
     catch { return null; }
   },
-  // Normal local write — records timestamp so smartSync knows this device owns it
   set(key, val) {
     try {
       localStorage.setItem(key, JSON.stringify(val));
@@ -20,7 +19,6 @@ const ls = {
     }
     catch { return false; }
   },
-  // Write from remote — stamps key with remote's own time so it won't be re-pushed
   setFromRemote(key, val, remoteMs) {
     try {
       localStorage.setItem(key, JSON.stringify(val));
@@ -31,28 +29,24 @@ const ls = {
     }
     catch { return false; }
   },
-  // Returns the last local-write timestamp for a key (ms), or 0 if unknown
   ts(key) {
     try { return JSON.parse(localStorage.getItem("yz-ts") || "{}")[key] || 0; }
     catch { return 0; }
   },
 };
 
-// ─── Supabase sync ───────────────────────────────────────────────────────────
+// ─── Supabase sync ────────────────────────────────────────────────────────────
 const syncToSupabase = async (userId, key, value) => {
   if (!userId) return;
-  console.log("[sync] pushing key:", key);
   try {
     const { error } = await supabase.from("yz_data").upsert(
       { user_id: userId, key, value, updated_at: new Date().toISOString() },
       { onConflict: "user_id,key" }
     );
     if (error) console.error("[sync] push error for", key, error);
-    else console.log("[sync] pushed ok:", key);
   } catch (e) { console.error("[sync] push exception:", key, e); }
 };
 
-// ── Push all local yz- keys to Supabase. LOCAL ALWAYS WINS — never reads localStorage. ──
 const pushAllToSupabase = async (userId) => {
   if (!userId) return;
   const upserts = [];
@@ -62,13 +56,11 @@ const pushAllToSupabase = async (userId) => {
       upserts.push({ user_id: userId, key: k, value: ls.get(k), updated_at: new Date().toISOString() });
     }
   }
-  if (!upserts.length) { console.log("[sync] nothing local to push"); return; }
+  if (!upserts.length) return;
   const { error } = await supabase.from("yz_data").upsert(upserts, { onConflict: "user_id,key" });
   if (error) throw error;
-  console.log("[sync] pushed", upserts.length, "keys to Supabase");
 };
 
-// ── Fill in keys that are MISSING locally from Supabase. Never overwrites existing local data. ──
 const pullMissingFromSupabase = async (userId) => {
   if (!userId) return 0;
   const { data, error } = await supabase.from("yz_data").select("key, value").eq("user_id", userId);
@@ -78,28 +70,18 @@ const pullMissingFromSupabase = async (userId) => {
     if (localStorage.getItem(key) === null) {
       ls.setFromRemote(key, value, Date.now());
       filled++;
-      console.log("[sync] filled missing key from Supabase:", key);
-    } else {
-      console.log("[sync] skipping — key already exists locally:", key);
     }
   });
-  console.log("[sync] filled", filled, "missing keys from Supabase");
   return filled;
 };
 
-// ── Full pull — OVERWRITES all local data with Supabase. Only call after user confirms. ──
 const pullAllFromSupabase = async (userId) => {
   if (!userId) return;
   const { data, error } = await supabase.from("yz_data").select("key, value").eq("user_id", userId);
   if (error) throw error;
-  (data || []).forEach(({ key, value }) => {
-    ls.setFromRemote(key, value, Date.now());
-    console.log("[sync] overwriting local with Supabase:", key);
-  });
-  console.log("[sync] full pull complete —", (data || []).length, "keys overwritten");
+  (data || []).forEach(({ key, value }) => { ls.setFromRemote(key, value, Date.now()); });
 };
 
-// ── Fetch everything in Supabase for this user (for inspection / recovery). ──
 const fetchSupabaseSnapshot = async (userId) => {
   if (!userId) return [];
   const { data, error } = await supabase.from("yz_data").select("key, value, updated_at").eq("user_id", userId);
@@ -107,32 +89,28 @@ const fetchSupabaseSnapshot = async (userId) => {
   return data || [];
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 const getWeekKey = () => {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Monday
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
   return `yz-week-${d.toISOString().slice(0, 10)}`;
 };
-
 const todayStr = () => new Date().toISOString().slice(0, 10);
-
 const weekKeyForDate = (dateStr) => {
   const d = new Date(dateStr + "T00:00:00");
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
   return `yz-week-${d.toISOString().slice(0, 10)}`;
 };
-
-// Extract a single day's checks from week data (handles both old and new formats)
 const getDayChecks = (wd, dayStr) => {
-  if (!wd) return emptyChecks();
+  if (!wd) return null;
   if (wd.dailyChecks?.[dayStr]) return wd.dailyChecks[dayStr];
-  // Backward compat: old format stored checks at week level (treat as "any day" data)
   if (wd.checks) return wd.checks;
-  return emptyChecks();
+  return null;
 };
 
-// ─── Config ──────────────────────────────────────────────────────────────────
+// ─── Config ───────────────────────────────────────────────────────────────────
 const DEFAULT_SECTIONS = {
   business: {
     label: "Business", color: "#00FF88", icon: "◈", goal: "Leave Corporate · £15k/month",
@@ -196,7 +174,7 @@ const DEFAULT_SECTIONS = {
   },
 };
 
-// Remove stale yz-sections if it contains a "deen" key (old data), then load from storage or use defaults
+// Remove stale yz-sections if it contains a "deen" key
 {
   const _saved = ls.get("yz-sections");
   if (_saved && "deen" in _saved) {
@@ -208,28 +186,98 @@ const DEFAULT_SECTIONS = {
 }
 const SECTIONS = ls.get("yz-sections") || DEFAULT_SECTIONS;
 
-const Q_THEMES = ["Validate · First clients", "Tighten systems · Scale", "Systemize · Case studies", "Transition · Solidify ops"];
-const SCHED = [
+const DEFAULT_SCHED = [
   { label: "WEEKDAY", sub: "Mon–Fri · 3 hrs", color: "#A78BFA", blocks: ["60min — 100 outbound touches", "30min — Follow-ups + CRM", "30min — Write/refine post", "15min — Comments + DMs", "15min — Log calories + weight + spend"] },
   { label: "SATURDAY", sub: "6–7 hrs", color: "#FF6B35", blocks: ["2hrs — Deep client work + SOPs", "2hrs — List building + extra outreach", "1.5hrs — Batch content (posts + videos)", "30min — Weekly money review", "1hr — Long workout + steps"] },
   { label: "SUNDAY", sub: "6–7 hrs", color: "#FFD700", blocks: ["2hrs — Sales calls / review recordings", "1.5hrs — Long walk / cardio", "1.5hrs — Record, edit, schedule content", "1hr — Metrics review + next week plan"] },
 ];
 
-const emptyChecks = () => Object.fromEntries(Object.keys(SECTIONS).map(k => [k, [false, false, false, false]]));
-const emptyActuals = () => Object.fromEntries(Object.keys(SECTIONS).map(k => [k, [null, null, null, null]]));
+const DEFAULT_TITLE = "YEAR ZERO";
 
-const weekPct = (checks, actuals) => {
-  const sKeys = Object.keys(SECTIONS);
-  let done = 0, total = 0;
-  sKeys.forEach(sec => {
-    done += (checks[sec] || []).filter(Boolean).length;
-    done += SECTIONS[sec].weekly.filter((w, i) => { const a = (actuals[sec] || [])[i]; return a !== null && a !== undefined && a >= w.target; }).length;
-    total += SECTIONS[sec].daily.length + SECTIONS[sec].weekly.length;
-  });
-  return Math.round((done / total) * 100);
-};
+const Q_THEMES = ["Validate · First clients", "Tighten systems · Scale", "Systemize · Case studies", "Transition · Solidify ops"];
 
-// ─── Components ───────────────────────────────────────────────────────────────
+const emptyChecks = (secs = SECTIONS) =>
+  Object.fromEntries(Object.keys(secs).map(k => [k, new Array(secs[k].daily.length).fill(false)]));
+const emptyActuals = (secs = SECTIONS) =>
+  Object.fromEntries(Object.keys(secs).map(k => [k, new Array(secs[k].weekly.length).fill(null)]));
+
+// ─── InlineEdit ───────────────────────────────────────────────────────────────
+function InlineEdit({ value, onSave, editMode, style = {}, number = false }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => { if (!editing) setDraft(String(value)); }, [value, editing]);
+
+  const commit = () => {
+    const v = number ? (parseFloat(draft) || 0) : (draft.trim() || String(value));
+    onSave(v);
+    setEditing(false);
+  };
+
+  if (!editMode) return <span style={style}>{value}</span>;
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type={number ? "number" : "text"}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") { setDraft(String(value)); setEditing(false); }
+          e.stopPropagation();
+        }}
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#0d0d0d",
+          border: "none",
+          borderBottom: "1px solid #666",
+          outline: "none",
+          color: style.color || "#fff",
+          fontSize: style.fontSize || 12,
+          fontFamily: style.fontFamily || "inherit",
+          letterSpacing: style.letterSpacing || "inherit",
+          textTransform: style.textTransform || "none",
+          width: number ? 52 : "auto",
+          minWidth: 36,
+          maxWidth: 220,
+          padding: "1px 2px",
+          borderRadius: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <span
+      onClick={e => { e.stopPropagation(); setEditing(true); }}
+      title="Click to edit"
+      style={{ ...style, cursor: "text", borderBottom: "1px dashed #444" }}
+    >
+      {value}
+    </span>
+  );
+}
+
+// ─── ColorSwatch ──────────────────────────────────────────────────────────────
+function ColorSwatch({ color, onSave, editMode }) {
+  if (!editMode) return null;
+  return (
+    <label style={{ cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center" }} title="Change colour">
+      <span style={{ display: "inline-block", width: 14, height: 14, borderRadius: "50%", background: color, border: "2px solid #444" }} />
+      <input
+        type="color"
+        value={color}
+        onChange={e => onSave(e.target.value)}
+        style={{ position: "absolute", opacity: 0, width: 0, height: 0, pointerEvents: "none" }}
+      />
+    </label>
+  );
+}
+
+// ─── Ring ─────────────────────────────────────────────────────────────────────
 function Ring({ pct, color, size = 60 }) {
   const r = (size - 8) / 2, circ = 2 * Math.PI * r, dash = Math.min(pct / 100, 1) * circ;
   return (
@@ -242,17 +290,35 @@ function Ring({ pct, color, size = 60 }) {
   );
 }
 
-function CheckRow({ label, done, color, onToggle }) {
+// ─── CheckRow ─────────────────────────────────────────────────────────────────
+function CheckRow({ label, unit, done, color, onToggle, editMode, onUpdateLabel, onUpdateUnit, onDelete }) {
+  if (editMode) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: "1px solid #181818" }}>
+        <InlineEdit value={label} onSave={onUpdateLabel} editMode={true}
+          style={{ fontSize: 12, color: "#bbb", flex: 1, minWidth: 0 }} />
+        <span style={{ color: "#333", fontSize: 11, flexShrink: 0 }}>·</span>
+        <InlineEdit value={unit} onSave={onUpdateUnit} editMode={true}
+          style={{ fontSize: 11, color: "#555", flexShrink: 0 }} />
+        <button onClick={onDelete}
+          style={{ background: "none", border: "none", color: "#444", fontSize: 16, cursor: "pointer", padding: "0 4px", lineHeight: 1, flexShrink: 0 }}
+          title="Delete">×</button>
+      </div>
+    );
+  }
   return (
     <button onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer", padding: "5px 0", width: "100%", textAlign: "left" }}>
       <span style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${done ? color : "#3a3a3a"}`, background: done ? color + "22" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.18s", boxShadow: done ? `0 0 7px ${color}55` : "none" }}>
         {done && <span style={{ color, fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
       </span>
-      <span style={{ fontSize: 13, color: done ? "#444" : "#bbb", textDecoration: done ? "line-through" : "none", letterSpacing: 0.2 }}>{label}</span>
+      <span style={{ fontSize: 13, color: done ? "#444" : "#bbb", textDecoration: done ? "line-through" : "none", letterSpacing: 0.2 }}>
+        {label} · {unit}
+      </span>
     </button>
   );
 }
 
+// ─── InputModal ───────────────────────────────────────────────────────────────
 function InputModal({ item, color, onSave, onClose }) {
   const [val, setVal] = useState(item.actual ?? 0);
   const isCheck = item.type === "check";
@@ -305,12 +371,33 @@ function InputModal({ item, color, onSave, onClose }) {
   );
 }
 
-function WeekCard({ item, color, onClick }) {
+// ─── WeekCard ─────────────────────────────────────────────────────────────────
+function WeekCard({ item, color, onClick, editMode, onUpdateLabel, onUpdateTarget, onUpdateUnit, onDelete }) {
   const hasData = item.actual !== null && item.actual !== undefined;
   const isCheck = item.type === "check";
   const pct = hasData ? Math.min(Math.round((item.actual / item.target) * 100), 100) : 0;
   const hit = hasData && item.actual >= item.target;
   const dc = hit ? "#00FF88" : color;
+
+  if (editMode) {
+    return (
+      <div style={{ background: "#181818", borderRadius: 10, padding: "10px 12px", border: "1px solid #2a2a2a", display: "flex", flexDirection: "column", gap: 5 }}>
+        <InlineEdit value={item.label} onSave={onUpdateLabel} editMode={true}
+          style={{ fontSize: 10, color: "#bbb", display: "block" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 9, color: "#444" }}>target:</span>
+          <InlineEdit value={item.target} onSave={v => onUpdateTarget(parseFloat(v) || 0)} editMode={true} number
+            style={{ fontSize: 13, color, fontFamily: "'Bebas Neue', cursive" }} />
+          <InlineEdit value={item.unit} onSave={onUpdateUnit} editMode={true}
+            style={{ fontSize: 9, color: "#555" }} />
+          <button onClick={onDelete}
+            style={{ background: "none", border: "none", color: "#444", fontSize: 16, cursor: "pointer", padding: "0 2px", lineHeight: 1, marginLeft: "auto" }}
+            title="Delete">×</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <button onClick={onClick} style={{ position: "relative", overflow: "hidden", background: hasData ? color + "08" : "#181818", borderRadius: 10, padding: "10px 12px", border: `1px solid ${hasData ? color + "40" : "#242424"}`, cursor: "pointer", textAlign: "left", width: "100%" }}>
       {hasData && <div style={{ position: "absolute", inset: 0, width: `${pct}%`, background: `linear-gradient(90deg, ${color}14, transparent)`, pointerEvents: "none" }} />}
@@ -332,47 +419,128 @@ function WeekCard({ item, color, onClick }) {
   );
 }
 
-function GoalCard({ sectionKey, checks, onCheck, actuals, onSave }) {
-  const s = SECTIONS[sectionKey];
+// ─── GoalCard ─────────────────────────────────────────────────────────────────
+function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editMode, onUpdate, onUpdateChecks, onUpdateActuals }) {
+  const s = section;
   const [modal, setModal] = useState(null);
   const dd = checks.filter(Boolean).length;
   const wh = s.weekly.filter((w, i) => { const a = actuals[i]; return a !== null && a !== undefined && a >= w.target; }).length;
-  const pct = Math.round(((dd + wh) / (s.daily.length + s.weekly.length)) * 100);
+  const pct = Math.round(((dd + wh) / Math.max(s.daily.length + s.weekly.length, 1)) * 100);
+
+  const addDailyTask = () => {
+    const newItem = { label: "New task", unit: "once", key: `d${Date.now()}` };
+    onUpdate(sec => ({ ...sec, daily: [...sec.daily, newItem] }));
+    onUpdateChecks([...checks, false]);
+  };
+
+  const deleteDailyTask = (i) => {
+    onUpdate(sec => ({ ...sec, daily: sec.daily.filter((_, j) => j !== i) }));
+    onUpdateChecks(checks.filter((_, j) => j !== i));
+  };
+
+  const addWeeklyTarget = () => {
+    const newItem = { label: "New target", min: 0, max: 10, target: 5, unit: "units", suffix: "/ 5", key: `w${Date.now()}` };
+    onUpdate(sec => ({ ...sec, weekly: [...sec.weekly, newItem] }));
+    onUpdateActuals([...actuals, null]);
+  };
+
+  const deleteWeeklyTarget = (i) => {
+    if (modal === i) setModal(null);
+    onUpdate(sec => ({ ...sec, weekly: sec.weekly.filter((_, j) => j !== i) }));
+    onUpdateActuals(actuals.filter((_, j) => j !== i));
+  };
+
   return (
     <>
-      {modal !== null && <InputModal item={{ ...s.weekly[modal], actual: actuals[modal] ?? 0 }} color={s.color} onSave={v => { onSave(sectionKey, modal, v); setModal(null); }} onClose={() => setModal(null)} />}
+      {!editMode && modal !== null && s.weekly[modal] && (
+        <InputModal
+          item={{ ...s.weekly[modal], actual: actuals[modal] ?? 0 }}
+          color={s.color}
+          onSave={v => { onSave(sectionKey, modal, v); setModal(null); }}
+          onClose={() => setModal(null)}
+        />
+      )}
       <div style={{ background: "#111", border: `1px solid ${s.color}20`, borderRadius: 16, padding: 22, display: "flex", flexDirection: "column", gap: 18, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -30, right: -30, width: 130, height: 130, borderRadius: "50%", background: `radial-gradient(circle, ${s.color}07 0%, transparent 70%)`, pointerEvents: "none" }} />
+
+        {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
-              <span style={{ color: s.color, fontSize: 18 }}>{s.icon}</span>
-              <span style={{ color: s.color, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>{s.label}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3, flexWrap: "wrap" }}>
+              <ColorSwatch color={s.color} onSave={c => onUpdate(sec => ({ ...sec, color: c }))} editMode={editMode} />
+              <InlineEdit value={s.icon} onSave={v => onUpdate(sec => ({ ...sec, icon: v }))} editMode={editMode}
+                style={{ color: s.color, fontSize: 18 }} />
+              <InlineEdit value={s.label} onSave={v => onUpdate(sec => ({ ...sec, label: v }))} editMode={editMode}
+                style={{ color: s.color, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }} />
             </div>
-            <div style={{ color: "#fff", fontFamily: "'Bebas Neue', cursive", fontSize: 20, letterSpacing: 1 }}>{s.goal}</div>
+            <InlineEdit value={s.goal} onSave={v => onUpdate(sec => ({ ...sec, goal: v }))} editMode={editMode}
+              style={{ color: "#fff", fontFamily: "'Bebas Neue', cursive", fontSize: 20, letterSpacing: 1 }} />
           </div>
-          <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginLeft: 12 }}>
             <Ring pct={pct} color={s.color} size={60} />
             <span style={{ position: "absolute", fontFamily: "'Bebas Neue', cursive", fontSize: 13, color: "#fff", letterSpacing: 1 }}>{pct}%</span>
           </div>
         </div>
+
+        {/* Daily non-negotiables */}
         <div style={{ borderTop: "1px solid #1e1e1e", paddingTop: 14 }}>
           <div style={{ fontSize: 9, color: "#444", letterSpacing: 2, marginBottom: 7 }}>DAILY NON-NEGOTIABLES</div>
-          {s.daily.map((item, i) => <CheckRow key={item.key} label={`${item.label} · ${item.unit}`} done={checks[i]} color={s.color} onToggle={() => onCheck(sectionKey, i)} />)}
+          {s.daily.map((item, i) => (
+            <CheckRow
+              key={item.key}
+              label={item.label}
+              unit={item.unit}
+              done={!!checks[i]}
+              color={s.color}
+              onToggle={() => onCheck(sectionKey, i)}
+              editMode={editMode}
+              onUpdateLabel={v => onUpdate(sec => ({ ...sec, daily: sec.daily.map((d, j) => j === i ? { ...d, label: v } : d) }))}
+              onUpdateUnit={v => onUpdate(sec => ({ ...sec, daily: sec.daily.map((d, j) => j === i ? { ...d, unit: v } : d) }))}
+              onDelete={() => deleteDailyTask(i)}
+            />
+          ))}
+          {editMode && (
+            <button onClick={addDailyTask} style={{ marginTop: 8, width: "100%", padding: "6px 0", background: "#1a1a1a", border: "1px dashed #2a2a2a", borderRadius: 6, color: "#444", fontSize: 10, cursor: "pointer", letterSpacing: 1 }}>
+              + ADD DAILY TASK
+            </button>
+          )}
         </div>
+
+        {/* Weekly targets */}
         <div style={{ borderTop: "1px solid #1e1e1e", paddingTop: 14 }}>
-          <div style={{ fontSize: 9, color: "#444", letterSpacing: 2, marginBottom: 10 }}>WEEKLY TARGETS <span style={{ color: "#2a2a2a" }}>· tap to log</span></div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-            {s.weekly.map((w, i) => <WeekCard key={i} item={{ ...w, actual: actuals[i] }} color={s.color} onClick={() => setModal(i)} />)}
+          <div style={{ fontSize: 9, color: "#444", letterSpacing: 2, marginBottom: 10 }}>
+            WEEKLY TARGETS {!editMode && <span style={{ color: "#2a2a2a" }}>· tap to log</span>}
           </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+            {s.weekly.map((w, i) => (
+              <WeekCard
+                key={w.key || i}
+                item={{ ...w, actual: actuals[i] }}
+                color={s.color}
+                onClick={() => !editMode && setModal(i)}
+                editMode={editMode}
+                onUpdateLabel={v => onUpdate(sec => ({ ...sec, weekly: sec.weekly.map((w2, j) => j === i ? { ...w2, label: v } : w2) }))}
+                onUpdateTarget={v => onUpdate(sec => ({ ...sec, weekly: sec.weekly.map((w2, j) => j === i ? { ...w2, target: v, max: Math.max(w2.max, v * 2), suffix: `/ ${v}` } : w2) }))}
+                onUpdateUnit={v => onUpdate(sec => ({ ...sec, weekly: sec.weekly.map((w2, j) => j === i ? { ...w2, unit: v } : w2) }))}
+                onDelete={() => deleteWeeklyTarget(i)}
+              />
+            ))}
+          </div>
+          {editMode && (
+            <button onClick={addWeeklyTarget} style={{ marginTop: 8, width: "100%", padding: "6px 0", background: "#1a1a1a", border: "1px dashed #2a2a2a", borderRadius: 6, color: "#444", fontSize: 10, cursor: "pointer", letterSpacing: 1 }}>
+              + ADD WEEKLY TARGET
+            </button>
+          )}
         </div>
-        {sectionKey === "fatLoss" && <MacroTracker color={s.color} />}
+
+        {sectionKey === "fatLoss" && <MacroTracker color={s.color} editMode={editMode} />}
       </div>
     </>
   );
 }
 
-function HistoryModal({ history, onClose }) {
+// ─── HistoryModal ─────────────────────────────────────────────────────────────
+function HistoryModal({ history, sections, onClose }) {
   const weeks = Object.entries(history).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 20);
   const fmt = d => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   return (
@@ -390,21 +558,21 @@ function HistoryModal({ history, onClose }) {
         ) : weeks.map(([key, wd]) => {
           const dateStr = key.replace("yz-week-", "");
           const endD = new Date(dateStr); endD.setDate(endD.getDate() + 6);
-          const pcts = Object.keys(SECTIONS).map(sec => {
-            // Aggregate daily checks across all tracked days (new format) or fall back to old
+          const pcts = Object.keys(sections).map(sec => {
+            const s = sections[sec];
             let dailyDone = 0, dailyPossible = 0;
             if (wd.dailyChecks) {
               const days = Object.values(wd.dailyChecks);
               days.forEach(dc => { dailyDone += (dc[sec] || []).filter(Boolean).length; });
-              dailyPossible = SECTIONS[sec].daily.length * Math.max(days.length, 1);
+              dailyPossible = s.daily.length * Math.max(days.length, 1);
             } else {
               const c = wd.checks?.[sec] || [];
               dailyDone = c.filter(Boolean).length;
-              dailyPossible = SECTIONS[sec].daily.length;
+              dailyPossible = s.daily.length;
             }
-            const a = wd.actuals?.[sec] || [null, null, null, null];
-            const w2 = SECTIONS[sec].weekly.filter((w, i) => { const v = a[i]; return v !== null && v !== undefined && v >= w.target; }).length;
-            return Math.round(((dailyDone + w2) / (dailyPossible + SECTIONS[sec].weekly.length)) * 100);
+            const a = wd.actuals?.[sec] || [];
+            const w2 = s.weekly.filter((w, i) => { const v = a[i]; return v !== null && v !== undefined && v >= w.target; }).length;
+            return Math.round(((dailyDone + w2) / Math.max(dailyPossible + s.weekly.length, 1)) * 100);
           });
           const overall = Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length);
           const oc = overall >= 75 ? "#00FF88" : overall >= 50 ? "#FFD700" : "#FF6B35";
@@ -415,11 +583,11 @@ function HistoryModal({ history, onClose }) {
                 <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 26, color: oc, filter: `drop-shadow(0 0 6px ${oc}55)` }}>{overall}%</div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                {Object.keys(SECTIONS).map((sec, i) => (
+                {Object.keys(sections).map((sec, i) => (
                   <div key={sec} style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 9, color: "#444", marginBottom: 4 }}>{SECTIONS[sec].label}</div>
-                    <div style={{ height: 3, background: "#252525", borderRadius: 2, overflow: "hidden", marginBottom: 3 }}><div style={{ height: "100%", width: `${pcts[i]}%`, background: SECTIONS[sec].color }} /></div>
-                    <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 13, color: SECTIONS[sec].color }}>{pcts[i]}%</div>
+                    <div style={{ fontSize: 9, color: "#444", marginBottom: 4 }}>{sections[sec].label}</div>
+                    <div style={{ height: 3, background: "#252525", borderRadius: 2, overflow: "hidden", marginBottom: 3 }}><div style={{ height: "100%", width: `${pcts[i]}%`, background: sections[sec].color }} /></div>
+                    <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 13, color: sections[sec].color }}>{pcts[i]}%</div>
                   </div>
                 ))}
               </div>
@@ -431,6 +599,7 @@ function HistoryModal({ history, onClose }) {
   );
 }
 
+// ─── SupabaseInspectorModal ───────────────────────────────────────────────────
 function SupabaseInspectorModal({ data, onClose }) {
   const [expanded, setExpanded] = useState(null);
   const sorted = [...data].sort((a, b) => a.key.localeCompare(b.key));
@@ -474,6 +643,7 @@ function SupabaseInspectorModal({ data, onClose }) {
   );
 }
 
+// ─── DayPicker ────────────────────────────────────────────────────────────────
 function DayPicker({ selectedDay, onSelect }) {
   const DAY_NAMES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
   const today = todayStr();
@@ -487,41 +657,12 @@ function DayPicker({ selectedDay, onSelect }) {
       {days.map(day => {
         const d = new Date(day + "T00:00:00");
         const isToday = day === today;
-        const isSel  = day === selectedDay;
+        const isSel = day === selectedDay;
         return (
-          <button
-            key={day}
-            onClick={() => onSelect(day)}
-            style={{
-              flexShrink: 0,
-              width: 44,
-              padding: "8px 0",
-              borderRadius: 10,
-              border: `1px solid ${isSel ? "#00FF88" : isToday ? "#2a2a2a" : "#1a1a1a"}`,
-              background: isSel ? "#00FF8812" : isToday ? "#181818" : "#111",
-              cursor: "pointer",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 3,
-            }}
-          >
-            <span style={{ fontSize: 8, color: isSel ? "#00FF88" : "#444", letterSpacing: 1 }}>
-              {DAY_NAMES[d.getDay()]}
-            </span>
-            <span style={{
-              fontFamily: "'Bebas Neue', cursive",
-              fontSize: 18,
-              color: isSel ? "#00FF88" : isToday ? "#bbb" : "#444",
-              letterSpacing: 1,
-              lineHeight: 1,
-              filter: isSel ? "drop-shadow(0 0 5px #00FF8888)" : "none",
-            }}>
-              {d.getDate()}
-            </span>
-            {isToday && !isSel && (
-              <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#333" }} />
-            )}
+          <button key={day} onClick={() => onSelect(day)} style={{ flexShrink: 0, width: 44, padding: "8px 0", borderRadius: 10, border: `1px solid ${isSel ? "#00FF88" : isToday ? "#2a2a2a" : "#1a1a1a"}`, background: isSel ? "#00FF8812" : isToday ? "#181818" : "#111", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+            <span style={{ fontSize: 8, color: isSel ? "#00FF88" : "#444", letterSpacing: 1 }}>{DAY_NAMES[d.getDay()]}</span>
+            <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: isSel ? "#00FF88" : isToday ? "#bbb" : "#444", letterSpacing: 1, lineHeight: 1, filter: isSel ? "drop-shadow(0 0 5px #00FF8888)" : "none" }}>{d.getDate()}</span>
+            {isToday && !isSel && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#333" }} />}
           </button>
         );
       })}
@@ -538,67 +679,137 @@ export default function App() {
   const dayLabel = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][today.getDay()];
   const WEEK_KEY = getWeekKey();
 
-  const [session, setSession] = useState(undefined); // undefined = checking
-  const [selectedDay, setSelectedDay] = useState(todayStr);
-  const [checks, setChecks] = useState(emptyChecks);
-  const [actuals, setActuals] = useState(emptyActuals);
-  const [history, setHistory] = useState({});
-  const [saveFlash, setSaveFlash] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [manualSyncing, setManualSyncing] = useState(false);
+  // ── State ───────────────────────────────────────────────────────────────────
+  const [session,          setSession]          = useState(undefined);
+  const [selectedDay,      setSelectedDay]      = useState(todayStr);
+  const [checks,           setChecks]           = useState(() => emptyChecks(ls.get("yz-sections") || DEFAULT_SECTIONS));
+  const [actuals,          setActuals]          = useState(() => emptyActuals(ls.get("yz-sections") || DEFAULT_SECTIONS));
+  const [history,          setHistory]          = useState({});
+  const [saveFlash,        setSaveFlash]        = useState(false);
+  const [showHistory,      setShowHistory]      = useState(false);
+  const [manualSyncing,    setManualSyncing]    = useState(false);
   const [manualSyncStatus, setManualSyncStatus] = useState(null);
-  const [pulling, setPulling] = useState(false);
-  const [pullStatus, setPullStatus] = useState(null);
-  const [editMode, setEditMode] = useState(false);
-  const [forcePushing, setForcePushing] = useState(false);
-  const [forcePushStatus, setForcePushStatus] = useState(null);
-  const [supabaseData, setSupabaseData] = useState(null); // null = closed
+  const [pulling,          setPulling]          = useState(false);
+  const [pullStatus,       setPullStatus]       = useState(null);
+  const [editMode,         setEditMode]         = useState(false);
+  const [forcePushing,     setForcePushing]     = useState(false);
+  const [forcePushStatus,  setForcePushStatus]  = useState(null);
+  const [supabaseData,     setSupabaseData]     = useState(null);
+  // Editable config state
+  const [sections,  setSections]  = useState(() => ls.get("yz-sections") || DEFAULT_SECTIONS);
+  const [sched,     setSched]     = useState(() => ls.get("yz-sched")    || DEFAULT_SCHED);
+  const [dashTitle, setDashTitle] = useState(() => ls.get("yz-title")   || DEFAULT_TITLE);
 
-  // Auth: check session on mount, subscribe to changes
+  // ── Auth ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session: s } }) => {
       if (s) { setSession(s); return; }
-      // No session found — try refreshing the token (handles mobile where the stored
-      // token may have expired but a refresh token is still available)
       const { data: { session: refreshed } } = await supabase.auth.refreshSession();
       setSession(refreshed ?? null);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s ?? null);
-    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => setSession(s ?? null));
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load data on login: push local → Supabase first, then fill any keys missing locally.
-  // LOCAL DATA ALWAYS WINS — never overwrites existing localStorage keys.
+  // ── Load on login ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!session) return;
     const load = async () => {
       const uid = session.user.id;
-      console.log("[sync] login: pushing local data to Supabase");
       try { await pushAllToSupabase(uid); } catch (e) { console.error("[sync] login push failed:", e); }
-      console.log("[sync] login: filling any missing local keys from Supabase");
       try { await pullMissingFromSupabase(uid); } catch (e) { console.error("[sync] login fill failed:", e); }
       const day = todayStr();
       setSelectedDay(day);
+      const savedSections = ls.get("yz-sections") || DEFAULT_SECTIONS;
+      setSections(savedSections);
+      setSched(ls.get("yz-sched") || DEFAULT_SCHED);
+      setDashTitle(ls.get("yz-title") || DEFAULT_TITLE);
       const wd = ls.get(weekKeyForDate(day));
-      setChecks(getDayChecks(wd, day));
+      const dayChecks = getDayChecks(wd, day);
+      setChecks(dayChecks || emptyChecks(savedSections));
       if (wd?.actuals) setActuals(wd.actuals);
       setHistory(ls.get("yz-history") || {});
-      console.log("[sync] dashboard ready — local data preserved");
     };
     load();
   }, [session?.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reload checks when the user switches to a different day
+  // ── Day switch ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!session) return;
     const wd = ls.get(weekKeyForDate(selectedDay));
-    setChecks(getDayChecks(wd, selectedDay));
-    setActuals(wd?.actuals || emptyActuals());
+    const dayChecks = getDayChecks(wd, selectedDay);
+    setChecks(dayChecks || emptyChecks(sections));
+    setActuals(wd?.actuals || emptyActuals(sections));
   }, [selectedDay]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // SYNC = push local → Supabase only. Never touches localStorage.
+  // ── Persist week data ────────────────────────────────────────────────────────
+  const persist = useCallback((nc, na) => {
+    const userId = session?.user?.id;
+    const wk = weekKeyForDate(selectedDay);
+    const existing = ls.get(wk) || {};
+    const dailyChecks = existing.dailyChecks ? { ...existing.dailyChecks } : {};
+    if (existing.checks && !existing.dailyChecks) dailyChecks[todayStr()] = existing.checks;
+    dailyChecks[selectedDay] = nc;
+    const wd = { dailyChecks, actuals: na, savedAt: Date.now() };
+    ls.set(wk, wd);
+    syncToSupabase(userId, wk, wd);
+    const newHist = { ...history, [wk]: wd };
+    const trimmed = Object.fromEntries(Object.keys(newHist).sort().reverse().slice(0, 52).map(k => [k, newHist[k]]));
+    ls.set("yz-history", trimmed);
+    syncToSupabase(userId, "yz-history", trimmed);
+    setHistory(trimmed);
+    setSaveFlash(true);
+    setTimeout(() => setSaveFlash(false), 1400);
+  }, [history, selectedDay, session]);
+
+  // ── Check / actuals handlers ─────────────────────────────────────────────────
+  const handleCheck = (sec, idx) => {
+    const next = { ...checks, [sec]: checks[sec].map((v, i) => i === idx ? !v : v) };
+    setChecks(next); persist(next, actuals);
+  };
+  const handleSave = (sec, idx, val) => {
+    const next = { ...actuals, [sec]: actuals[sec].map((v, i) => i === idx ? val : v) };
+    setActuals(next); persist(checks, next);
+  };
+  // Called from GoalCard when daily tasks are added/removed in edit mode
+  const handleUpdateChecks = (sec, newArr) => {
+    const next = { ...checks, [sec]: newArr };
+    setChecks(next);
+    persist(next, actuals);
+  };
+  // Called from GoalCard when weekly targets are added/removed in edit mode
+  const handleUpdateActuals = (sec, newArr) => {
+    const next = { ...actuals, [sec]: newArr };
+    setActuals(next);
+    persist(checks, next);
+  };
+
+  // ── Section / sched / title update (edit mode) ───────────────────────────────
+  const updateSection = (key, updater) => {
+    setSections(prev => {
+      const next = { ...prev, [key]: updater(prev[key]) };
+      ls.set("yz-sections", next);
+      syncToSupabase(session?.user?.id, "yz-sections", next);
+      return next;
+    });
+  };
+
+  const updateSched = (updater) => {
+    setSched(prev => {
+      const next = updater(prev);
+      ls.set("yz-sched", next);
+      syncToSupabase(session?.user?.id, "yz-sched", next);
+      return next;
+    });
+  };
+
+  const saveDashTitle = (v) => {
+    setDashTitle(v);
+    ls.set("yz-title", v);
+    syncToSupabase(session?.user?.id, "yz-title", v);
+  };
+
+  // ── Sync handlers ────────────────────────────────────────────────────────────
   const handleManualSync = async () => {
     if (manualSyncing || !session) return;
     setManualSyncing(true); setManualSyncStatus(null);
@@ -610,25 +821,25 @@ export default function App() {
       console.error("[sync] push failed:", e);
       setManualSyncStatus("✗ FAILED");
       setTimeout(() => setManualSyncStatus(null), 3000);
-    } finally {
-      setManualSyncing(false);
-    }
+    } finally { setManualSyncing(false); }
   };
 
-  // PULL = overwrite local with Supabase. User must confirm first.
   const handlePull = async () => {
     if (pulling || !session) return;
-    const confirmed = window.confirm(
-      "⚠️ PULL FROM SUPABASE\n\nThis will overwrite ALL your local data with what is stored in Supabase.\n\nYour current local data will be lost.\n\nAre you sure?"
-    );
+    const confirmed = window.confirm("⚠️ PULL FROM SUPABASE\n\nThis will overwrite ALL your local data with what is stored in Supabase.\n\nYour current local data will be lost.\n\nAre you sure?");
     if (!confirmed) return;
     setPulling(true); setPullStatus(null);
     try {
       await pullAllFromSupabase(session.user.id);
       const day = todayStr();
       setSelectedDay(day);
+      const savedSections = ls.get("yz-sections") || DEFAULT_SECTIONS;
+      setSections(savedSections);
+      setSched(ls.get("yz-sched") || DEFAULT_SCHED);
+      setDashTitle(ls.get("yz-title") || DEFAULT_TITLE);
       const wd = ls.get(weekKeyForDate(day));
-      setChecks(getDayChecks(wd, day));
+      const dayChecks = getDayChecks(wd, day);
+      setChecks(dayChecks || emptyChecks(savedSections));
       if (wd?.actuals) setActuals(wd.actuals);
       setHistory(ls.get("yz-history") || {});
       setPullStatus("✓ PULLED");
@@ -637,12 +848,9 @@ export default function App() {
       console.error("[sync] pull failed:", e);
       setPullStatus("✗ FAILED");
       setTimeout(() => setPullStatus(null), 3000);
-    } finally {
-      setPulling(false);
-    }
+    } finally { setPulling(false); }
   };
 
-  // CHECK DB = fetch Supabase snapshot for inspection / data recovery
   const handleCheckSupabase = async () => {
     if (!session) return;
     try {
@@ -659,10 +867,8 @@ export default function App() {
     const uid = session.user.id;
     setForcePushing(true); setForcePushStatus(null);
     try {
-      console.log("[sync] force push: deleting all Supabase rows for user", uid);
       const { error: delErr } = await supabase.from("yz_data").delete().eq("user_id", uid);
       if (delErr) throw delErr;
-      console.log("[sync] force push: deleted all rows, now pushing local data");
       const upserts = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
@@ -672,64 +878,26 @@ export default function App() {
       }
       if (upserts.length) await supabase.from("yz_data").upsert(upserts, { onConflict: "user_id,key" });
       setForcePushStatus("✓ DONE");
-      console.log("[sync] force push complete");
       setTimeout(() => setForcePushStatus(null), 3000);
     } catch (e) {
       console.error("[sync] force push failed:", e);
       setForcePushStatus("✗ FAILED");
       setTimeout(() => setForcePushStatus(null), 3000);
-    } finally {
-      setForcePushing(false);
-    }
+    } finally { setForcePushing(false); }
   };
 
-  const persist = useCallback((nc, na) => {
-    const userId = session?.user?.id;
-    const wk = weekKeyForDate(selectedDay);
-    const existing = ls.get(wk) || {};
-    // Build dailyChecks, migrating old single-checks format if present
-    const dailyChecks = existing.dailyChecks ? { ...existing.dailyChecks } : {};
-    if (existing.checks && !existing.dailyChecks) {
-      dailyChecks[todayStr()] = existing.checks; // migrate old data to today
-    }
-    dailyChecks[selectedDay] = nc;
-    const wd = { dailyChecks, actuals: na, savedAt: Date.now() };
-    ls.set(wk, wd);
-    syncToSupabase(userId, wk, wd);
-    const newHist = { ...history, [wk]: wd };
-    const trimmed = Object.fromEntries(Object.keys(newHist).sort().reverse().slice(0, 52).map(k => [k, newHist[k]]));
-    ls.set("yz-history", trimmed);
-    syncToSupabase(userId, "yz-history", trimmed);
-    setHistory(trimmed);
-    setSaveFlash(true);
-    setTimeout(() => setSaveFlash(false), 1400);
-  }, [history, selectedDay, session]);
-
-  const handleCheck = (sec, idx) => {
-    const next = { ...checks, [sec]: checks[sec].map((v, i) => i === idx ? !v : v) };
-    setChecks(next); persist(next, actuals);
-  };
-  const handleSave = (sec, idx, val) => {
-    const next = { ...actuals, [sec]: actuals[sec].map((v, i) => i === idx ? val : v) };
-    setActuals(next); persist(checks, next);
-  };
-
+  // ── Derived ──────────────────────────────────────────────────────────────────
   const allDaily = Object.values(checks).flat();
   const dailyDone = allDaily.filter(Boolean).length;
-  const dailyPct = Math.round((dailyDone / allDaily.length) * 100);
+  const dailyPct = Math.round((dailyDone / Math.max(allDaily.length, 1)) * 100);
   const topColor = dailyPct >= 75 ? "#00FF88" : dailyPct >= 45 ? "#FFD700" : "#FF6B35";
   const pastWeeks = Object.keys(history).filter(k => k !== WEEK_KEY).length;
 
-  // Still checking session — blank dark screen to avoid flash
-  if (session === undefined) {
-    return <div style={{ minHeight: "100vh", background: "#0a0a0a" }} />;
-  }
+  // ── Loading / auth gates ─────────────────────────────────────────────────────
+  if (session === undefined) return <div style={{ minHeight: "100vh", background: "#0a0a0a" }} />;
+  if (!session) return <AuthScreen />;
 
-  // Not logged in — show auth screen
-  if (!session) {
-    return <AuthScreen />;
-  }
-
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "#fff", fontFamily: "'DM Mono', monospace" }}>
       <style>{`
@@ -744,7 +912,7 @@ export default function App() {
         button:active { opacity: 0.65; transform: scale(0.97); }
       `}</style>
 
-      {showHistory && <HistoryModal history={history} onClose={() => setShowHistory(false)} />}
+      {showHistory && <HistoryModal history={history} sections={sections} onClose={() => setShowHistory(false)} />}
       {supabaseData !== null && <SupabaseInspectorModal data={supabaseData} onClose={() => setSupabaseData(null)} />}
 
       {/* Save flash */}
@@ -755,7 +923,12 @@ export default function App() {
       {/* Top bar */}
       <div style={{ borderBottom: "1px solid #1a1a1a", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: "#0a0a0a", zIndex: 100 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, letterSpacing: 3, color: "#fff" }}>YEAR ZERO</span>
+          <InlineEdit
+            value={dashTitle}
+            onSave={saveDashTitle}
+            editMode={editMode}
+            style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, letterSpacing: 3, color: "#fff" }}
+          />
           <span style={{ background: "#00FF8812", border: "1px solid #00FF8830", borderRadius: 6, padding: "3px 9px", fontSize: 10, color: "#00FF88", letterSpacing: 2 }}>Q{currentQ}</span>
           <button onClick={() => setShowHistory(true)} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#555", letterSpacing: 1 }}>
             HISTORY {pastWeeks > 0 ? `· ${pastWeeks}wk` : ""}
@@ -767,7 +940,7 @@ export default function App() {
             {pulling ? "PULLING..." : pullStatus || "PULL"}
           </button>
           <button onClick={() => { setEditMode(m => !m); setForcePushStatus(null); }} style={{ background: editMode ? "#FF6B3518" : "#181818", border: `1px solid ${editMode ? "#FF6B3544" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: editMode ? "#FF6B35" : "#444", letterSpacing: 1 }}>
-            {editMode ? "EDITING" : "EDIT"}
+            {editMode ? "✓ DONE EDITING" : "EDIT"}
           </button>
           <button onClick={handleCheckSupabase} style={{ background: "#FFD70014", border: "1px solid #FFD70033", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#FFD700", letterSpacing: 1 }}>
             CHECK DB
@@ -800,7 +973,6 @@ export default function App() {
           </div>
         </div>
       </div>
-
 
       {/* Quarters */}
       <div style={{ padding: "12px 20px 0", display: "flex", gap: 6 }}>
@@ -843,10 +1015,31 @@ export default function App() {
         </div>
       )}
 
+      {/* Edit mode hint */}
+      {editMode && (
+        <div style={{ margin: "10px 20px 0", padding: "8px 14px", background: "#FF6B3510", border: "1px solid #FF6B3533", borderRadius: 10 }}>
+          <span style={{ fontSize: 10, color: "#FF6B35", letterSpacing: 1 }}>
+            ✎ EDIT MODE — click any text to rename · colour swatch to repaint · × to delete · click DONE EDITING when finished
+          </span>
+        </div>
+      )}
+
       {/* Goal cards */}
       <div style={{ padding: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
-        {Object.keys(SECTIONS).map(key => (
-          <GoalCard key={key} sectionKey={key} checks={checks[key]} onCheck={handleCheck} actuals={actuals[key]} onSave={handleSave} />
+        {Object.keys(sections).map(key => (
+          <GoalCard
+            key={key}
+            sectionKey={key}
+            section={sections[key]}
+            checks={checks[key] || []}
+            onCheck={handleCheck}
+            actuals={actuals[key] || []}
+            onSave={handleSave}
+            editMode={editMode}
+            onUpdate={(updater) => updateSection(key, updater)}
+            onUpdateChecks={(newArr) => handleUpdateChecks(key, newArr)}
+            onUpdateActuals={(newArr) => handleUpdateActuals(key, newArr)}
+          />
         ))}
       </div>
 
@@ -856,25 +1049,55 @@ export default function App() {
           <span style={{ fontSize: 9, color: "#444", letterSpacing: 2 }}>WEEKLY SCHEDULE TEMPLATE</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-          {SCHED.map(day => (
-            <div key={day.label} style={{ background: "#111", border: `1px solid ${day.color}20`, borderRadius: 12, padding: 16 }}>
-              <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: day.color, letterSpacing: 2 }}>{day.label}</div>
-              <div style={{ fontSize: 9, color: "#444", letterSpacing: 1, marginBottom: 10 }}>{day.sub}</div>
-              {day.blocks.map((b, i) => (
-                <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "flex-start" }}>
+          {sched.map((day, di) => (
+            <div key={di} style={{ background: "#111", border: `1px solid ${day.color}20`, borderRadius: 12, padding: 16 }}>
+              <InlineEdit
+                value={day.label}
+                onSave={v => updateSched(s => s.map((d, i) => i === di ? { ...d, label: v } : d))}
+                editMode={editMode}
+                style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: day.color, letterSpacing: 2, display: "block", marginBottom: 2 }}
+              />
+              <InlineEdit
+                value={day.sub}
+                onSave={v => updateSched(s => s.map((d, i) => i === di ? { ...d, sub: v } : d))}
+                editMode={editMode}
+                style={{ fontSize: 9, color: "#444", letterSpacing: 1, marginBottom: 10, display: "block" }}
+              />
+              {day.blocks.map((b, bi) => (
+                <div key={bi} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "flex-start" }}>
                   <span style={{ color: day.color, fontSize: 7, marginTop: 4, flexShrink: 0 }}>▸</span>
-                  <span style={{ fontSize: 11, color: "#777", lineHeight: 1.5 }}>{b}</span>
+                  <InlineEdit
+                    value={b}
+                    onSave={v => updateSched(s => s.map((d, i) => i === di ? { ...d, blocks: d.blocks.map((bl, j) => j === bi ? v : bl) } : d))}
+                    editMode={editMode}
+                    style={{ fontSize: 11, color: "#777", lineHeight: 1.5 }}
+                  />
+                  {editMode && (
+                    <button
+                      onClick={() => updateSched(s => s.map((d, i) => i === di ? { ...d, blocks: d.blocks.filter((_, j) => j !== bi) } : d))}
+                      style={{ background: "none", border: "none", color: "#333", fontSize: 14, cursor: "pointer", padding: "0 2px", flexShrink: 0, lineHeight: 1, marginTop: 1 }}
+                      title="Delete block">×</button>
+                  )}
                 </div>
               ))}
+              {editMode && (
+                <button
+                  onClick={() => updateSched(s => s.map((d, i) => i === di ? { ...d, blocks: [...d.blocks, "New block"] } : d))}
+                  style={{ marginTop: 6, width: "100%", padding: "5px 0", background: "#1a1a1a", border: "1px dashed #2a2a2a", borderRadius: 5, color: "#444", fontSize: 9, cursor: "pointer", letterSpacing: 1 }}
+                >
+                  + ADD BLOCK
+                </button>
+              )}
             </div>
           ))}
         </div>
       </div>
 
+      {/* Footer */}
       <div style={{ borderTop: "1px solid #1a1a1a", padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontSize: 9, color: "#222", letterSpacing: 1 }}>YEAR ZERO · INPUT-BASED SYSTEM · DATA SAVED LOCALLY</span>
         <div style={{ display: "flex", gap: 14 }}>
-          {Object.values(SECTIONS).map(s => (
+          {Object.values(sections).map(s => (
             <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <span style={{ color: s.color, fontSize: 9 }}>{s.icon}</span>
               <span style={{ fontSize: 9, color: "#333" }}>{s.label}</span>

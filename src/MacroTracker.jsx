@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const TARGETS = {
+const DEFAULT_TARGETS = {
   cal:     { label: "CALORIES", unit: "kcal", target: 2000, color: "#FF6B35" },
   protein: { label: "PROTEIN",  unit: "g",    target: 160,  color: "#00FF88" },
   carbs:   { label: "CARBS",    unit: "g",    target: 200,  color: "#FFD700" },
@@ -168,7 +168,7 @@ function LoadingBubble() {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function MacroTracker({ color = "#FF6B35" }) {
+export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
   const today = todayKey();
   const chatKey  = `yz-nutrition-chat-${today}`;
   const mealKey  = `yz-macros-${today}`;
@@ -179,6 +179,15 @@ export default function MacroTracker({ color = "#FF6B35" }) {
   const [loading,   setLoading]   = useState(false);
   const [extOpen,   setExtOpen]   = useState(false);
   const [error,     setError]     = useState(null);
+  const [targets,   setTargets]   = useState(() => ls.get("yz-macro-targets") || DEFAULT_TARGETS);
+
+  const updateTarget = (key, newTarget) => {
+    setTargets(prev => {
+      const next = { ...prev, [key]: { ...prev[key], target: newTarget } };
+      ls.set("yz-macro-targets", next);
+      return next;
+    });
+  };
 
   const chatEndRef  = useRef(null);
   const fileRef     = useRef(null);
@@ -451,9 +460,28 @@ export default function MacroTracker({ color = "#FF6B35" }) {
       {/* Section label */}
       <div style={{ fontSize: 9, color: "#444", letterSpacing: 2 }}>MACRO TRACKER</div>
 
+      {/* ── Editable targets (edit mode only) ─────────────────────────────── */}
+      {editMode && (
+        <div style={{ background: "#0d0d0d", border: "1px solid #1e1e1e", borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 9, color: "#555", letterSpacing: 2, marginBottom: 2 }}>EDIT TARGETS</div>
+          {Object.entries(targets).map(([key, cfg]) => (
+            <div key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 9, color: "#555", letterSpacing: 1, width: 64, flexShrink: 0 }}>{cfg.label}</span>
+              <input
+                type="number"
+                value={cfg.target}
+                onChange={e => updateTarget(key, parseFloat(e.target.value) || 0)}
+                style={{ width: 72, background: "#1a1a1a", border: `1px solid ${cfg.color}44`, borderRadius: 5, color: cfg.color, padding: "4px 7px", fontSize: 12, fontFamily: "'Bebas Neue', cursive", letterSpacing: 1, outline: "none", textAlign: "center" }}
+              />
+              <span style={{ fontSize: 9, color: "#444" }}>{cfg.unit}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Macro bars ────────────────────────────────────────────────────── */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {Object.entries(TARGETS).map(([key, cfg]) => (
+        {Object.entries(targets).map(([key, cfg]) => (
           <MacroBar
             key={key}
             label={cfg.label}
