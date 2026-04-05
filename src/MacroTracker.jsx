@@ -203,6 +203,19 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
     setMeals   (savedMeals || []);
   }, [chatKey, mealKey]);
 
+  // ── Re-read state when App signals a remote pull (cross-device sync) ───────
+  useEffect(() => {
+    const handleRemoteReload = () => {
+      setTargets(ls.get("yz-macro-targets") || DEFAULT_TARGETS);
+      const savedChat  = ls.get(chatKey);
+      const savedMeals = ls.get(mealKey);
+      if (savedChat)  setMessages(savedChat);
+      if (savedMeals) setMeals(savedMeals);
+    };
+    window.addEventListener("yz-reload", handleRemoteReload);
+    return () => window.removeEventListener("yz-reload", handleRemoteReload);
+  }, [chatKey, mealKey]);
+
   // ── Scroll chat to bottom on new messages ─────────────────────────────────
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });

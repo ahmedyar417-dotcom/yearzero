@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import MacroTracker from "./MacroTracker";
 import { supabase } from "./supabase";
 import AuthScreen from "./AuthScreen";
@@ -36,15 +36,57 @@ const ls = {
 };
 
 // ─── Supabase sync ────────────────────────────────────────────────────────────
+// Module-level tracker so syncToSupabase can report status to the App component
+// without needing React deps. The App sets _syncTracker.onChange on mount.
+const _syncTracker = { pending: 0, onChange: null };
+
 const syncToSupabase = async (userId, key, value) => {
   if (!userId) return;
+  _syncTracker.pending++;
+  _syncTracker.onChange?.("syncing");
   try {
     const { error } = await supabase.from("yz_data").upsert(
       { user_id: userId, key, value, updated_at: new Date().toISOString() },
       { onConflict: "user_id,key" }
     );
-    if (error) console.error("[sync] push error for", key, error);
-  } catch (e) { console.error("[sync] push exception:", key, e); }
+    _syncTracker.pending = Math.max(0, _syncTracker.pending - 1);
+    if (error) {
+      console.error("[sync] push error for", key, error);
+      _syncTracker.onChange?.("failed");
+    } else if (_syncTracker.pending === 0) {
+      _syncTracker.onChange?.("synced");
+    }
+  } catch (e) {
+    _syncTracker.pending = Math.max(0, _syncTracker.pending - 1);
+    console.error("[sync] push exception:", key, e);
+    _syncTracker.onChange?.("failed");
+  }
+};
+
+// Smart pull: fetch all rows and pull only keys where Supabase is newer than local.
+// Returns the number of keys updated.
+const smartPullNewerFromSupabase = async (userId) => {
+  if (!userId) return 0;
+  const { data, error } = await supabase
+    .from("yz_data")
+    .select("key, value, updated_at")
+    .eq("user_id", userId);
+  if (error || !data?.length) return 0;
+  let updated = 0;
+  data.forEach(({ key, value, updated_at }) => {
+    const remoteMs = new Date(updated_at).getTime();
+    const localMs = ls.ts(key);
+    // 1 s buffer avoids pulling back our own just-written data
+    if (remoteMs > localMs + 1000) {
+      // Skip if value is identical (extra safety guard against echo)
+      const localVal = ls.get(key);
+      if (JSON.stringify(localVal) === JSON.stringify(value)) return;
+      ls.setFromRemote(key, value, remoteMs);
+      console.log("[sync] pulled newer:", key, `(remote ${remoteMs} > local ${localMs})`);
+      updated++;
+    }
+  });
+  return updated;
 };
 
 const pushAllToSupabase = async (userId) => {
@@ -680,25 +722,34 @@ export default function App() {
   const WEEK_KEY = getWeekKey();
 
   // ── State ───────────────────────────────────────────────────────────────────
-  const [session,          setSession]          = useState(undefined);
-  const [selectedDay,      setSelectedDay]      = useState(todayStr);
-  const [checks,           setChecks]           = useState(() => emptyChecks(ls.get("yz-sections") || DEFAULT_SECTIONS));
-  const [actuals,          setActuals]          = useState(() => emptyActuals(ls.get("yz-sections") || DEFAULT_SECTIONS));
-  const [history,          setHistory]          = useState({});
-  const [saveFlash,        setSaveFlash]        = useState(false);
-  const [showHistory,      setShowHistory]      = useState(false);
-  const [manualSyncing,    setManualSyncing]    = useState(false);
-  const [manualSyncStatus, setManualSyncStatus] = useState(null);
-  const [pulling,          setPulling]          = useState(false);
-  const [pullStatus,       setPullStatus]       = useState(null);
-  const [editMode,         setEditMode]         = useState(false);
-  const [forcePushing,     setForcePushing]     = useState(false);
-  const [forcePushStatus,  setForcePushStatus]  = useState(null);
-  const [supabaseData,     setSupabaseData]     = useState(null);
+  const [session,         setSession]         = useState(undefined);
+  const [selectedDay,     setSelectedDay]     = useState(todayStr);
+  const [checks,          setChecks]          = useState(() => emptyChecks(ls.get("yz-sections") || DEFAULT_SECTIONS));
+  const [actuals,         setActuals]         = useState(() => emptyActuals(ls.get("yz-sections") || DEFAULT_SECTIONS));
+  const [history,         setHistory]         = useState({});
+  const [saveFlash,       setSaveFlash]       = useState(false);
+  const [showHistory,     setShowHistory]     = useState(false);
+  const [syncDot,         setSyncDot]         = useState("synced"); // "synced" | "syncing" | "failed"
+  const [pulling,         setPulling]         = useState(false);
+  const [pullStatus,      setPullStatus]      = useState(null);
+  const [editMode,        setEditMode]        = useState(false);
+  const [forcePushing,    setForcePushing]    = useState(false);
+  const [forcePushStatus, setForcePushStatus] = useState(null);
+  const [supabaseData,    setSupabaseData]    = useState(null);
+  const [reloadTick,      setReloadTick]      = useState(0); // increment to trigger reload from localStorage
   // Editable config state
   const [sections,  setSections]  = useState(() => ls.get("yz-sections") || DEFAULT_SECTIONS);
   const [sched,     setSched]     = useState(() => ls.get("yz-sched")    || DEFAULT_SCHED);
   const [dashTitle, setDashTitle] = useState(() => ls.get("yz-title")   || DEFAULT_TITLE);
+  // Refs so realtime/focus callbacks always read current values without stale closure
+  const selectedDayRef = useRef(selectedDay);
+  useEffect(() => { selectedDayRef.current = selectedDay; }, [selectedDay]);
+
+  // ── Wire sync-status callbacks to _syncTracker ──────────────────────────────
+  useEffect(() => {
+    _syncTracker.onChange = setSyncDot;
+    return () => { _syncTracker.onChange = null; };
+  }, []);
 
   // ── Auth ────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -741,6 +792,81 @@ export default function App() {
     setChecks(dayChecks || emptyChecks(sections));
     setActuals(wd?.actuals || emptyActuals(sections));
   }, [selectedDay]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Reload all React state from localStorage (called after any remote pull) ──
+  // Uses refs so this callback is stable (no stale closure on selectedDay).
+  const reloadFromStorage = useCallback(() => {
+    const day = selectedDayRef.current;
+    const savedSections = ls.get("yz-sections") || DEFAULT_SECTIONS;
+    setSections(savedSections);
+    setSched(ls.get("yz-sched") || DEFAULT_SCHED);
+    setDashTitle(ls.get("yz-title") || DEFAULT_TITLE);
+    const wd = ls.get(weekKeyForDate(day));
+    const dayChecks = getDayChecks(wd, day);
+    setChecks(dayChecks || emptyChecks(savedSections));
+    setActuals(wd?.actuals || emptyActuals(savedSections));
+    setHistory(ls.get("yz-history") || {});
+    // Notify sub-components (e.g. MacroTracker) to re-read their localStorage state
+    window.dispatchEvent(new CustomEvent("yz-reload"));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Increment reloadTick → triggers reloadFromStorage (used by realtime handler
+  // which can't call reloadFromStorage directly without a stale closure risk)
+  useEffect(() => {
+    if (reloadTick === 0) return;
+    reloadFromStorage();
+  }, [reloadTick]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Smart pull on app focus / visibility restore ──────────────────────────
+  const smartPullOnFocus = useCallback(async () => {
+    const uid = session?.user?.id;
+    if (!uid) return;
+    try {
+      const updated = await smartPullNewerFromSupabase(uid);
+      if (updated > 0) reloadFromStorage();
+    } catch (e) { console.error("[sync] focus pull failed:", e); }
+  }, [session?.user?.id, reloadFromStorage]);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    const onFocus = () => smartPullOnFocus();
+    const onVisibility = () => { if (!document.hidden) smartPullOnFocus(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [session?.user?.id, smartPullOnFocus]);
+
+  // ── Supabase realtime subscription ───────────────────────────────────────
+  useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid) return;
+    const channel = supabase
+      .channel("yz-data-changes")
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "yz_data",
+        filter: `user_id=eq.${uid}`,
+      }, (payload) => {
+        const row = payload.new;
+        if (!row?.key) return;
+        // Skip if the value is identical (our own echo coming back from the server)
+        const localVal = ls.get(row.key);
+        if (JSON.stringify(localVal) === JSON.stringify(row.value)) return;
+        const remoteMs = new Date(row.updated_at).getTime();
+        const localMs = ls.ts(row.key);
+        if (remoteMs > localMs + 1000) {
+          console.log("[sync] realtime: updating", row.key);
+          ls.setFromRemote(row.key, row.value, remoteMs);
+          setReloadTick(t => t + 1); // triggers the reloadFromStorage effect
+        }
+      })
+      .subscribe((status) => { console.log("[sync] realtime:", status); });
+    return () => { supabase.removeChannel(channel); };
+  }, [session?.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Persist week data ────────────────────────────────────────────────────────
   const persist = useCallback((nc, na) => {
@@ -810,18 +936,17 @@ export default function App() {
   };
 
   // ── Sync handlers ────────────────────────────────────────────────────────────
-  const handleManualSync = async () => {
-    if (manualSyncing || !session) return;
-    setManualSyncing(true); setManualSyncStatus(null);
+  // Retry: shown only when syncDot === "failed"
+  const handleRetrySync = async () => {
+    if (!session?.user?.id) return;
+    setSyncDot("syncing");
     try {
       await pushAllToSupabase(session.user.id);
-      setManualSyncStatus("✓ PUSHED");
-      setTimeout(() => setManualSyncStatus(null), 3000);
+      setSyncDot("synced");
     } catch (e) {
-      console.error("[sync] push failed:", e);
-      setManualSyncStatus("✗ FAILED");
-      setTimeout(() => setManualSyncStatus(null), 3000);
-    } finally { setManualSyncing(false); }
+      console.error("[sync] retry failed:", e);
+      setSyncDot("failed");
+    }
   };
 
   const handlePull = async () => {
@@ -910,6 +1035,7 @@ export default function App() {
         button { font-family: inherit; transition: opacity 0.15s; }
         button:hover { opacity: 0.82; }
         button:active { opacity: 0.65; transform: scale(0.97); }
+        @keyframes yz-pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
       `}</style>
 
       {showHistory && <HistoryModal history={history} sections={sections} onClose={() => setShowHistory(false)} />}
@@ -933,9 +1059,22 @@ export default function App() {
           <button onClick={() => setShowHistory(true)} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#555", letterSpacing: 1 }}>
             HISTORY {pastWeeks > 0 ? `· ${pastWeeks}wk` : ""}
           </button>
-          <button onClick={handleManualSync} disabled={manualSyncing} style={{ background: manualSyncStatus === "✓ PUSHED" ? "#00FF8818" : "#181818", border: `1px solid ${manualSyncStatus === "✓ PUSHED" ? "#00FF8844" : manualSyncStatus === "✗ FAILED" ? "#FF3B3B44" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: manualSyncing ? "not-allowed" : "pointer", fontSize: 10, color: manualSyncStatus === "✓ PUSHED" ? "#00FF88" : manualSyncStatus === "✗ FAILED" ? "#FF6B6B" : manualSyncing ? "#555" : "#A78BFA", letterSpacing: 1 }}>
-            {manualSyncing ? "PUSHING..." : manualSyncStatus || "SYNC"}
-          </button>
+          {/* Auto-sync status indicator */}
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }} title={syncDot === "synced" ? "Synced" : syncDot === "syncing" ? "Syncing…" : "Sync failed — tap to retry"}>
+            <div style={{
+              width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+              background: syncDot === "synced" ? "#00FF88" : syncDot === "syncing" ? "#FFD700" : "#FF3B3B",
+              boxShadow: syncDot === "synced" ? "0 0 5px #00FF8866" : syncDot === "syncing" ? "0 0 5px #FFD70066" : "0 0 6px #FF3B3B88",
+              transition: "background 0.4s, box-shadow 0.4s",
+              animation: syncDot === "syncing" ? "yz-pulse-dot 1s ease-in-out infinite" : "none",
+              cursor: syncDot === "failed" ? "pointer" : "default",
+            }} onClick={syncDot === "failed" ? handleRetrySync : undefined} />
+            {syncDot === "failed" && (
+              <button onClick={handleRetrySync} style={{ background: "#FF3B3B14", border: "1px solid #FF3B3B44", borderRadius: 5, padding: "3px 8px", fontSize: 9, color: "#FF6B6B", cursor: "pointer", letterSpacing: 1 }}>
+                RETRY
+              </button>
+            )}
+          </div>
           <button onClick={handlePull} disabled={pulling} style={{ background: pullStatus === "✓ PULLED" ? "#00FF8818" : "#181818", border: `1px solid ${pullStatus === "✓ PULLED" ? "#00FF8844" : pullStatus === "✗ FAILED" ? "#FF3B3B44" : "#FF6B3533"}`, borderRadius: 7, padding: "4px 11px", cursor: pulling ? "not-allowed" : "pointer", fontSize: 10, color: pullStatus === "✓ PULLED" ? "#00FF88" : pullStatus === "✗ FAILED" ? "#FF6B6B" : pulling ? "#555" : "#FF6B35", letterSpacing: 1 }}>
             {pulling ? "PULLING..." : pullStatus || "PULL"}
           </button>
