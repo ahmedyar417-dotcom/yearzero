@@ -462,7 +462,7 @@ function WeekCard({ item, color, onClick, editMode, onUpdateLabel, onUpdateTarge
 }
 
 // ─── GoalCard ─────────────────────────────────────────────────────────────────
-function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editMode, onUpdate, onUpdateChecks, onUpdateActuals, onReorder }) {
+function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editMode, onUpdate, onUpdateChecks, onUpdateActuals, onReorder, viewDayOffset }) {
   const s = section;
   const [modal, setModal] = useState(null);
   const dd = checks.filter(Boolean).length;
@@ -591,7 +591,7 @@ function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editM
           )}
         </div>
 
-        {sectionKey === "fatLoss" && <MacroTracker color={s.color} editMode={editMode} />}
+        {sectionKey === "fatLoss" && <MacroTracker color={s.color} editMode={editMode} viewDayOffset={viewDayOffset} />}
       </div>
     </>
   );
@@ -1233,6 +1233,7 @@ export default function App() {
             onUpdateChecks={(newArr) => handleUpdateChecks(key, newArr)}
             onUpdateActuals={(newArr) => handleUpdateActuals(key, newArr)}
             onReorder={(dir) => handleReorderSection(key, dir)}
+            viewDayOffset={Math.round((new Date(selectedDay + "T00:00:00") - new Date(todayStr() + "T00:00:00")) / 86400000)}
           />
         ))}
       </div>
