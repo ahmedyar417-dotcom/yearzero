@@ -29,7 +29,6 @@ For photo inputs: analyse what you can see, estimate portions visually, but ask 
 Keep responses short — 1-3 sentences max before asking a question or logging. Be encouraging about fat loss progress when relevant. Use UK English.`;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const todayKey = () => new Date().toISOString().slice(0, 10);
 
 const ls = {
   get(key) {
@@ -168,13 +167,21 @@ function LoadingBubble() {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
-  const today = todayKey();
-  const chatKey  = `yz-nutrition-chat-${today}`;
-  const mealKey  = `yz-macros-${today}`;
+export default function MacroTracker({ color = "#FF6B35", editMode = false, viewDayOffset = 0 }) {
+  const getActiveDateKey = (offset) => {
+    const d = new Date();
+    d.setDate(d.getDate() + (offset || 0));
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString().slice(0, 10);
+  };
 
-  const [messages,  setMessages]  = useState([]);
-  const [meals,     setMeals]     = useState([]);
+  const dateKey   = getActiveDateKey(viewDayOffset);
+  const MEALS_KEY = "yz-macros-" + dateKey;
+  const CHAT_KEY  = "yz-nutrition-chat-" + dateKey;
+
+  const [messages,  setMessages]  = useState(() => ls.get("yz-nutrition-chat-" + getActiveDateKey(viewDayOffset)) || [{ role: "assistant", content: "Tell me what you ate, or take a photo of your meal." }]);
+  const [meals,     setMeals]     = useState(() => ls.get("yz-macros-" + getActiveDateKey(viewDayOffset)) || []);
+  const [coaching,  setCoaching]  = useState(() => ls.get("yz-macro-coach-" + getActiveDateKey(viewDayOffset)) || "");
   const [input,     setInput]     = useState("");
   const [loading,   setLoading]   = useState(false);
   const [extOpen,   setExtOpen]   = useState(false);
@@ -195,40 +202,53 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
   const barcodeRef  = useRef(null);
   const inputRef    = useRef(null);
 
-  // ── Load / day-reset on mount ──────────────────────────────────────────────
+  // ── Reload data when day offset changes ───────────────────────────────────
   useEffect(() => {
-    const savedChat  = ls.get(chatKey);
-    const savedMeals = ls.get(mealKey);
-    setMessages(savedChat  || []);
-    setMeals   (savedMeals || []);
-  }, [chatKey, mealKey]);
+    const dk = getActiveDateKey(viewDayOffset);
+    const mk = "yz-macros-" + dk;
+    const ck = "yz-nutrition-chat-" + dk;
+    setMeals(ls.get(mk) || []);
+    setMessages(ls.get(ck) || [{ role: "assistant", content: "Tell me what you ate, or take a photo of your meal." }]);
+    setCoaching(ls.get("yz-macro-coach-" + dk) || "");
+    setInput("");
+  }, [viewDayOffset]);
 
   // ── Re-read state when App signals a remote pull (cross-device sync) ───────
   useEffect(() => {
     const handleRemoteReload = () => {
+      const dk = getActiveDateKey(viewDayOffset);
       setTargets(ls.get("yz-macro-targets") || DEFAULT_TARGETS);
-      const savedChat  = ls.get(chatKey);
-      const savedMeals = ls.get(mealKey);
+      const savedChat  = ls.get("yz-nutrition-chat-" + dk);
+      const savedMeals = ls.get("yz-macros-" + dk);
       if (savedChat)  setMessages(savedChat);
       if (savedMeals) setMeals(savedMeals);
+      setCoaching(ls.get("yz-macro-coach-" + dk) || "");
     };
     window.addEventListener("yz-reload", handleRemoteReload);
     return () => window.removeEventListener("yz-reload", handleRemoteReload);
-  }, [chatKey, mealKey]);
+  }, [viewDayOffset]);
 
   // ── Scroll chat to bottom on new messages ─────────────────────────────────
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // ── Persist helpers ────────────────────────────────────────────────────────
-  const persistMessages = useCallback((msgs) => {
-    ls.set(chatKey, msgs);
-  }, [chatKey]);
+  // ── Persist helpers — always recompute key from current viewDayOffset ─────
+  const saveChat = useCallback((msgs) => {
+    const dk = getActiveDateKey(viewDayOffset);
+    ls.set("yz-nutrition-chat-" + dk, msgs);
+  }, [viewDayOffset]);
 
-  const persistMeals = useCallback((ms) => {
-    ls.set(mealKey, ms);
-  }, [mealKey]);
+  const saveMeals = useCallback((ms) => {
+    const dk = getActiveDateKey(viewDayOffset);
+    ls.set("yz-macros-" + dk, ms);
+  }, [viewDayOffset]);
+
+  const saveCoaching = useCallback((text) => {
+    const dk = getActiveDateKey(viewDayOffset);
+    ls.set("yz-macro-coach-" + dk, text);
+    setCoaching(text);
+  }, [viewDayOffset]);
 
   // ── Call Claude ────────────────────────────────────────────────────────────
   const callClaude = useCallback(async (history) => {
@@ -256,12 +276,12 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
       const assistantMsg = { role: "assistant", content: clean };
       const newHistory   = [...history, assistantMsg];
       setMessages(newHistory);
-      persistMessages(newHistory);
+      saveChat(newHistory);
 
       if (entry) {
         setMeals(prev => {
           const next = [...prev, { ...entry, id: Date.now() }];
-          persistMeals(next);
+          saveMeals(next);
           return next;
         });
       }
@@ -269,14 +289,14 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
       const errMsg = { role: "assistant", content: `⚠ ${e.message || "Something went wrong. Try again."}` };
       setMessages(prev => {
         const next = [...prev, errMsg];
-        persistMessages(next);
+        saveChat(next);
         return next;
       });
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [persistMessages, persistMeals]);
+  }, [saveChat, saveMeals]);
 
   // ── Send text message ──────────────────────────────────────────────────────
   const sendText = useCallback(() => {
@@ -285,10 +305,10 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
     const userMsg  = { role: "user", content: text };
     const newHistory = [...messages, userMsg];
     setMessages(newHistory);
-    persistMessages(newHistory);
+    saveChat(newHistory);
     setInput("");
     callClaude(newHistory);
-  }, [input, loading, messages, persistMessages, callClaude]);
+  }, [input, loading, messages, saveChat, callClaude]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendText(); }
@@ -313,11 +333,11 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
       };
       const newHistory = [...messages, userMsg];
       setMessages(newHistory);
-      persistMessages(newHistory);
+      saveChat(newHistory);
       callClaude(newHistory);
     };
     reader.readAsDataURL(file);
-  }, [messages, persistMessages, callClaude]);
+  }, [messages, saveChat, callClaude]);
 
   // ── Upload from gallery / file picker ────────────────────────────────────
   const handleGallery = useCallback((e) => {
@@ -338,11 +358,11 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
       };
       const newHistory = [...messages, userMsg];
       setMessages(newHistory);
-      persistMessages(newHistory);
+      saveChat(newHistory);
       callClaude(newHistory);
     };
     reader.readAsDataURL(file);
-  }, [messages, persistMessages, callClaude]);
+  }, [messages, saveChat, callClaude]);
 
   // ── Barcode scan ───────────────────────────────────────────────────────────
   const handleBarcode = useCallback(async (e) => {
@@ -402,7 +422,7 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
 
       if (!barcode) {
         const msg = { role: "assistant", content: "Couldn't read a barcode from that image. Make sure the barcode is clear and well-lit, then try again." };
-        setMessages(prev => { const next = [...prev, msg]; persistMessages(next); return next; });
+        setMessages(prev => { const next = [...prev, msg]; saveChat(next); return next; });
         setLoading(false);
         return;
       }
@@ -413,7 +433,7 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
 
       if (ofData.status !== 1 || !ofData.product) {
         const msg = { role: "assistant", content: `Barcode ${barcode} scanned — but this product isn't in the Open Food Facts database yet. What is it? Describe it and I'll estimate the macros.` };
-        setMessages(prev => { const next = [...prev, msg]; persistMessages(next); return next; });
+        setMessages(prev => { const next = [...prev, msg]; saveChat(next); return next; });
         setLoading(false);
         return;
       }
@@ -437,25 +457,25 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
       };
       const newHistory = [...messages, userMsg];
       setMessages(newHistory);
-      persistMessages(newHistory);
+      saveChat(newHistory);
       callClaude(newHistory); // callClaude manages setLoading(false) in its finally block
 
     } catch (err) {
       const msg = { role: "assistant", content: `⚠ Barcode scan failed: ${err.message}` };
-      setMessages(prev => { const next = [...prev, msg]; persistMessages(next); return next; });
+      setMessages(prev => { const next = [...prev, msg]; saveChat(next); return next; });
       setError(err.message);
       setLoading(false);
     }
-  }, [messages, persistMessages, callClaude]);
+  }, [messages, saveChat, callClaude]);
 
   // ── Delete meal ────────────────────────────────────────────────────────────
   const deleteMeal = useCallback((id) => {
     setMeals(prev => {
       const next = prev.filter(m => m.id !== id);
-      persistMeals(next);
+      saveMeals(next);
       return next;
     });
-  }, [persistMeals]);
+  }, [saveMeals]);
 
   // ── Derived totals ─────────────────────────────────────────────────────────
   const totals = sumMeals(meals);
@@ -631,11 +651,6 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
           overflowY: "auto",
           padding: "12px 12px 4px",
         }}>
-          {messages.length === 0 && (
-            <div style={{ textAlign: "center", padding: "24px 0", fontSize: 11, color: "#333" }}>
-              Tell me what you ate, or take a photo of your meal.
-            </div>
-          )}
           {messages.map((msg, i) => (
             <ChatBubble key={i} msg={msg} />
           ))}
@@ -645,6 +660,21 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
 
         {/* Divider */}
         <div style={{ height: 1, background: "#1a1a1a" }} />
+
+        {/* Past-day banner */}
+        {viewDayOffset !== 0 && (
+          <div style={{
+            padding: "5px 12px",
+            background: "#FF6B3515",
+            borderBottom: "1px solid #FF6B3522",
+            fontSize: 9,
+            color: "#FF6B35",
+            letterSpacing: 2,
+            textAlign: "center",
+          }}>
+            LOGGING FOR {new Date(dateKey + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }).toUpperCase()}
+          </div>
+        )}
 
         {/* Input row */}
         <div style={{ display: "flex", gap: 6, padding: "8px 10px", alignItems: "center" }}>
