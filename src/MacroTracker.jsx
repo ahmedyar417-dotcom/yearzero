@@ -190,8 +190,8 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
   };
 
   const chatEndRef  = useRef(null);
-  const fileRef     = useRef(null);
-  const galleryRef  = useRef(null);
+  const cameraRef   = useRef(null);
+  const uploadRef   = useRef(null);
   const barcodeRef  = useRef(null);
   const inputRef    = useRef(null);
 
@@ -470,6 +470,30 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
       gap: 14,
       fontFamily: "'DM Mono', monospace",
     }}>
+      {/* Hidden file inputs — placed outside overflow:hidden containers for iOS Safari compatibility */}
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handlePhoto}
+        style={{ display: "none" }}
+      />
+      <input
+        ref={uploadRef}
+        type="file"
+        accept="image/*"
+        onChange={handleGallery}
+        style={{ display: "none" }}
+      />
+      <input
+        ref={barcodeRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleBarcode}
+        style={{ display: "none" }}
+      />
       {/* Section label */}
       <div style={{ fontSize: 9, color: "#444", letterSpacing: 2 }}>MACRO TRACKER</div>
 
@@ -624,43 +648,14 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
 
         {/* Input row */}
         <div style={{ display: "flex", gap: 6, padding: "8px 10px", alignItems: "center" }}>
-          {/* Hidden file input — meal photo (camera) */}
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handlePhoto}
-            style={{ display: "none" }}
-          />
-
-          {/* Hidden file input — gallery / file picker (no capture, opens library) */}
-          <input
-            ref={galleryRef}
-            type="file"
-            accept="image/*"
-            onChange={handleGallery}
-            style={{ display: "none" }}
-          />
-
-          {/* Hidden file input — barcode scan */}
-          <input
-            ref={barcodeRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleBarcode}
-            style={{ display: "none" }}
-          />
-
           {/* Barcode scan button */}
           <button
             onClick={() => barcodeRef.current?.click()}
             disabled={loading}
             title="Scan barcode"
             style={{
-              width: 34,
-              height: 34,
+              width: 44,
+              height: 44,
               flexShrink: 0,
               background: "#1a1a1a",
               border: "1px solid #1e1e1e",
@@ -685,14 +680,14 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
             </svg>
           </button>
 
-          {/* Camera button — live photo */}
+          {/* Camera button — opens camera directly on iOS */}
           <button
-            onClick={() => fileRef.current?.click()}
+            onClick={() => cameraRef.current?.click()}
             disabled={loading}
             title="Take a photo of your meal"
             style={{
-              width: 34,
-              height: 34,
+              width: 44,
+              height: 44,
               flexShrink: 0,
               background: "#1a1a1a",
               border: "1px solid #1e1e1e",
@@ -711,14 +706,14 @@ export default function MacroTracker({ color = "#FF6B35", editMode = false }) {
             </svg>
           </button>
 
-          {/* Gallery button — upload from photo library or file picker */}
+          {/* Upload button — opens photo library picker on iOS */}
           <button
-            onClick={() => galleryRef.current?.click()}
+            onClick={() => uploadRef.current?.click()}
             disabled={loading}
             title="Upload a photo from gallery"
             style={{
-              width: 34,
-              height: 34,
+              width: 44,
+              height: 44,
               flexShrink: 0,
               background: "#1a1a1a",
               border: "1px solid #1e1e1e",
