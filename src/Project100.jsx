@@ -147,16 +147,25 @@ export default function Project100({ session, onBack }) {
         </div>
 
         {/* Countdown */}
-        <div style={{
-          marginTop: 10,
-          fontFamily: "'Bebas Neue', cursive",
-          fontSize: 48,
-          letterSpacing: 4,
-          color: countdownColor,
-          filter: `drop-shadow(0 0 14px ${countdownColor}55)`,
-          lineHeight: 1.1,
-        }}>
-          {Math.abs(daysLeft)} {daysLeft >= 0 ? "DAYS LEFT" : "DAYS PAST"}
+        <div style={{ marginTop: 10, lineHeight: 1.1 }}>
+          <span style={{
+            fontFamily: "'Bebas Neue', cursive",
+            fontSize: 72,
+            letterSpacing: 4,
+            color: "#FF6B35",
+            filter: "drop-shadow(0 0 18px #FF6B3566)",
+          }}>
+            {Math.max(0, daysLeft)}
+          </span>
+          <span style={{
+            fontFamily: "'Bebas Neue', cursive",
+            fontSize: 28,
+            letterSpacing: 4,
+            color: "#FF6B3599",
+            marginLeft: 10,
+          }}>
+            DAYS LEFT
+          </span>
         </div>
         <div style={{ fontSize: 9, color: "#444", letterSpacing: 2, marginTop: 4 }}>
           DEADLINE: JUL 1 2025 · {TOTAL_DAYS}-DAY CHALLENGE
