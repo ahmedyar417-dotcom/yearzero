@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { supabase } from "./supabase";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const PROJECT_START = new Date("2025-04-08T00:00:00");
+const PROJECT_START = new Date("2026-04-08T00:00:00");
 const TOTAL_DAYS = 84;
 
 const DEFAULT_HABITS = [
@@ -52,7 +52,7 @@ export default function Project100({ session, onBack }) {
   // ── Date calculations ──────────────────────────────────────────────────────
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const deadline = new Date("2025-07-01T00:00:00");
+  const deadline = new Date("2026-07-01T00:00:00");
   const daysLeft = Math.ceil((deadline - today) / (1000 * 60 * 60 * 24));
   const daysPassed = Math.max(0, TOTAL_DAYS - Math.max(0, daysLeft));
   const progress = Math.min(100, Math.max(0, (daysPassed / TOTAL_DAYS) * 100));
@@ -96,7 +96,7 @@ export default function Project100({ session, onBack }) {
   // ── Wheel interaction ──────────────────────────────────────────────────────
   const handleSegmentClick = (hIdx, dIdx) => {
     const key = `${hIdx}-${dIdx}`;
-    const next = ((wheel[key] || 0) + 1) % 4;
+    const next = ((wheel[key] || 0) + 1) % 3;
     saveWheel({ ...wheel, [key]: next });
   };
 
@@ -114,12 +114,11 @@ export default function Project100({ session, onBack }) {
   const cx = svgSize / 2;
   const cy = svgSize / 2;
 
-  // Segment fill for a given state + habit color
-  const segFill = (state, color) => {
-    if (state === 0) return ["#1a1a1a", "#2a2a2a"];
-    if (state === 1) return [color, color];
-    if (state === 2) return [color + "66", color + "88"];
-    return ["#2a0a00", "#FF6B3599"];
+  // Segment fill: empty → done (green) → missed (red)
+  const segFill = (state) => {
+    if (state === 1) return ["#00FF88", "#00FF88"];
+    if (state === 2) return ["#FF3B3B", "#FF3B3B"];
+    return ["#1a1a1a", "#2a2a2a"];
   };
 
   return (
@@ -158,16 +157,16 @@ export default function Project100({ session, onBack }) {
               </span>
             </div>
             <div style={{ fontSize: 8, color: "#333", letterSpacing: 2, marginTop: 2 }}>
-              JUL 1 2025 · 84-DAY CHALLENGE
+              JUL 1 2026 · 84-DAY CHALLENGE
             </div>
           </div>
 
           {/* Progress bar */}
           <div style={{ marginBottom: 20 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: "#333", letterSpacing: 1, marginBottom: 4 }}>
-              <span>APR 8</span>
+              <span>APR 8 2026</span>
               <span style={{ color: progress >= 50 ? "#00FF8899" : "#FF3B3B99" }}>{Math.round(progress)}% · DAY {Math.min(projectDayNum, 84)}</span>
-              <span>JUL 1</span>
+              <span>JUL 1 2026</span>
             </div>
             <div style={{ height: 4, background: "#1a1a1a", borderRadius: 2, border: "1px solid #252525", overflow: "hidden" }}>
               <div style={{ height: "100%", width: `${progress}%`, background: progress >= 50 ? "#00FF88" : "#FF3B3B", borderRadius: 2, transition: "width 0.5s ease" }} />
@@ -257,10 +256,9 @@ export default function Project100({ session, onBack }) {
           <div style={{ marginTop: 16, borderTop: "1px solid #1a1a1a", paddingTop: 14 }}>
             <div style={{ fontSize: 8, color: "#2a2a2a", letterSpacing: 1, marginBottom: 7 }}>WHEEL SEGMENTS (CLICK TO CYCLE)</div>
             {[
-              { label: "EMPTY",   fill: "#1a1a1a", border: "#333" },
-              { label: "DONE",    fill: "#00FF88", border: "#00FF88" },
-              { label: "PARTIAL", fill: "#00FF8866", border: "#00FF8888" },
-              { label: "MISSED",  fill: "#2a0a00", border: "#FF6B35" },
+              { label: "EMPTY",  fill: "#1a1a1a", border: "#333" },
+              { label: "DONE",   fill: "#00FF88", border: "#00FF88" },
+              { label: "MISSED", fill: "#FF3B3B", border: "#FF3B3B" },
             ].map(s => (
               <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
                 <div style={{ width: 12, height: 12, borderRadius: 3, background: s.fill, border: `1px solid ${s.border}`, flexShrink: 0 }} />
@@ -324,7 +322,7 @@ export default function Project100({ session, onBack }) {
                 const startDeg = dIdx * SEG_ANGLE + SEG_GAP / 2;
                 const endDeg = (dIdx + 1) * SEG_ANGLE - SEG_GAP / 2;
                 const d = arcPath(cx, cy, innerR, outerR, startDeg, endDeg);
-                const [fill, stroke] = segFill(state, habit.color);
+                const [fill, stroke] = segFill(state);
 
                 return (
                   <path
