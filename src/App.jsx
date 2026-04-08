@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import MacroTracker from "./MacroTracker";
+import Project100 from "./Project100";
 import { supabase } from "./supabase";
 import AuthScreen from "./AuthScreen";
 
@@ -619,7 +620,7 @@ function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editM
           )}
         </div>
 
-        {sectionKey === "fatLoss" && <MacroTracker color={s.color} editMode={editMode} viewDayOffset={viewDayOffset} />}
+        {false && sectionKey === "fatLoss" && <MacroTracker color={s.color} editMode={editMode} viewDayOffset={viewDayOffset} />}
       </div>
     </>
   );
@@ -814,6 +815,7 @@ export default function App() {
   const [forcePushStatus, setForcePushStatus] = useState(null);
   const [supabaseData,    setSupabaseData]    = useState(null);
   const [reloadTick,      setReloadTick]      = useState(0); // increment to trigger reload from localStorage
+  const [showP100,        setShowP100]        = useState(false);
   // Editable config state
   const [sections,  setSections]  = useState(() => ls.get("yz-sections") || DEFAULT_SECTIONS);
   const [sched,     setSched]     = useState(() => ls.get("yz-sched")    || DEFAULT_SCHED);
@@ -1147,6 +1149,11 @@ export default function App() {
       {showHistory && <HistoryModal history={history} sections={sections} onClose={() => setShowHistory(false)} />}
       {supabaseData !== null && <SupabaseInspectorModal data={supabaseData} onClose={() => setSupabaseData(null)} />}
 
+      {showP100 && <Project100 session={session} onBack={() => setShowP100(false)} />}
+      {showP100 && null /* hide dashboard below */}
+      {!showP100 && <>
+
+
       {/* Save flash */}
       <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 5000, background: "#141414", border: "1px solid #00FF8855", borderRadius: 10, padding: "9px 16px", fontSize: 11, color: "#00FF88", letterSpacing: 1, transition: "opacity 0.3s", opacity: saveFlash ? 1 : 0, pointerEvents: "none" }}>
         ✓ Saved
@@ -1197,6 +1204,9 @@ export default function App() {
           )}
           <button onClick={() => supabase.auth.signOut()} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#444", letterSpacing: 1 }}>
             SIGN OUT
+          </button>
+          <button onClick={() => setShowP100(true)} style={{ background: "#FF6B3518", border: "1px solid #FF6B3555", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#FF6B35", letterSpacing: 1 }}>
+            ◉ P100
           </button>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1379,6 +1389,7 @@ export default function App() {
           ))}
         </div>
       </div>
+      </>}
     </div>
   );
 }
