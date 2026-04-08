@@ -62,8 +62,6 @@ export default function Project100({ session, onBack }) {
   const projectDayNum = Math.min(84, Math.max(1, rawDay));
   const elapsed = Math.min(TOTAL_DAYS, Math.max(0, rawDay - 1));
 
-  const countdownColor = daysLeft > 30 ? "#00FF88" : daysLeft > 10 ? "#FFD700" : "#FF3B3B";
-
   // ── Supabase sync ──────────────────────────────────────────────────────────
   const syncKey = useCallback(async (key, data) => {
     if (!session?.user?.id) return;
@@ -140,77 +138,77 @@ export default function Project100({ session, onBack }) {
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#FF6B35", boxShadow: "0 0 6px #FF6B3566" }} />
       </div>
 
-      {/* ── Hero header ────────────────────────────────────────────────────── */}
-      <div style={{ padding: "28px 24px 16px", textAlign: "center" }}>
-        <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 64, letterSpacing: 8, color: "#fff", lineHeight: 1 }}>
-          PROJECT 100
-        </div>
+      {/* ── Main two-panel layout (fills remaining viewport height) ───────── */}
+      <div style={{ display: "flex", gap: 0, padding: "0", height: "calc(100vh - 48px)", overflow: "hidden" }}>
 
-        {/* Countdown */}
-        <div style={{ marginTop: 10, lineHeight: 1.1 }}>
-          <span style={{
-            fontFamily: "'Bebas Neue', cursive",
-            fontSize: 72,
-            letterSpacing: 4,
-            color: "#FF6B35",
-            filter: "drop-shadow(0 0 18px #FF6B3566)",
-          }}>
-            {Math.max(0, daysLeft)}
-          </span>
-          <span style={{
-            fontFamily: "'Bebas Neue', cursive",
-            fontSize: 28,
-            letterSpacing: 4,
-            color: "#FF6B3599",
-            marginLeft: 10,
-          }}>
-            DAYS LEFT
-          </span>
-        </div>
-        <div style={{ fontSize: 9, color: "#444", letterSpacing: 2, marginTop: 4 }}>
-          DEADLINE: JUL 1 2025 · {TOTAL_DAYS}-DAY CHALLENGE
-        </div>
+        {/* LEFT: sidebar — header + countdown + progress + habits */}
+        <div style={{ width: 270, flexShrink: 0, borderRight: "1px solid #1a1a1a", padding: "18px 16px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 0 }}>
 
-        {/* Progress bar */}
-        <div style={{ maxWidth: 580, margin: "16px auto 0" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#444", letterSpacing: 1, marginBottom: 5 }}>
-            <span>APR 8</span>
-            <span style={{ color: countdownColor }}>{Math.round(progress)}% COMPLETE · DAY {Math.min(projectDayNum, 84)}</span>
-            <span>JUL 1</span>
+          {/* Title + countdown */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 28, letterSpacing: 4, color: "#fff", lineHeight: 1 }}>
+              PROJECT 100
+            </div>
+            <div style={{ marginTop: 6, lineHeight: 1 }}>
+              <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 56, color: "#FF6B35", filter: "drop-shadow(0 0 14px #FF6B3555)", letterSpacing: 2 }}>
+                {Math.max(0, daysLeft)}
+              </span>
+              <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, color: "#FF6B3577", marginLeft: 8, letterSpacing: 3 }}>
+                DAYS LEFT
+              </span>
+            </div>
+            <div style={{ fontSize: 8, color: "#333", letterSpacing: 2, marginTop: 2 }}>
+              JUL 1 2025 · 84-DAY CHALLENGE
+            </div>
           </div>
-          <div style={{ height: 6, background: "#1a1a1a", borderRadius: 3, border: "1px solid #252525", overflow: "hidden" }}>
-            <div style={{
-              height: "100%",
-              width: `${progress}%`,
-              background: `linear-gradient(90deg, #00FF88, ${countdownColor})`,
-              borderRadius: 3,
-              transition: "width 0.5s ease",
-            }} />
+
+          {/* Progress bar */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: "#333", letterSpacing: 1, marginBottom: 4 }}>
+              <span>APR 8</span>
+              <span style={{ color: progress >= 50 ? "#00FF8899" : "#FF3B3B99" }}>{Math.round(progress)}% · DAY {Math.min(projectDayNum, 84)}</span>
+              <span>JUL 1</span>
+            </div>
+            <div style={{ height: 4, background: "#1a1a1a", borderRadius: 2, border: "1px solid #252525", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${progress}%`, background: progress >= 50 ? "#00FF88" : "#FF3B3B", borderRadius: 2, transition: "width 0.5s ease" }} />
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* ── Main two-panel layout ───────────────────────────────────────────── */}
-      <div style={{ display: "flex", gap: 20, padding: "8px 24px 28px", flexWrap: "wrap", alignItems: "flex-start" }}>
+          {/* Divider */}
+          <div style={{ borderTop: "1px solid #1a1a1a", marginBottom: 14 }} />
 
-        {/* LEFT: Non-negotiables panel */}
-        <div style={{ flex: "0 0 260px", background: "#111", border: "1px solid #1e1e1e", borderRadius: 16, padding: 18 }}>
-          <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 16, letterSpacing: 3, color: "#fff", marginBottom: 14 }}>
+          {/* Non-negotiables header */}
+          <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 14, letterSpacing: 3, color: "#fff", marginBottom: 10 }}>
             NON-NEGOTIABLES
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            {habits.map((h, i) => (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {habits.map((h, i) => {
+              const todayDayIdx = projectDayNum - 1;
+              const isDoneToday = (wheel[`${i}-${todayDayIdx}`] || 0) === 1;
+
+              return (
               <div
                 key={h.id}
-                style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: "#181818", borderRadius: 8, border: "1px solid #222" }}
+                style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 9px", background: "#181818", borderRadius: 8, border: `1px solid ${isDoneToday ? h.color + "44" : "#1e1e1e"}` }}
               >
+                {/* Checkbox */}
+                <div
+                  onClick={() => handleSegmentClick(i, todayDayIdx)}
+                  style={{
+                    width: 16, height: 16, borderRadius: 4, flexShrink: 0, cursor: "pointer",
+                    background: isDoneToday ? h.color : "#1a1a1a",
+                    border: `1.5px solid ${isDoneToday ? h.color : "#333"}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    transition: "all 0.15s",
+                    boxShadow: isDoneToday ? `0 0 6px ${h.color}55` : "none",
+                  }}
+                >
+                  {isDoneToday && <span style={{ fontSize: 9, color: "#000", fontWeight: 700, lineHeight: 1 }}>✓</span>}
+                </div>
+
                 {/* Color swatch */}
-                <div style={{
-                  width: 11, height: 11, borderRadius: "50%",
-                  background: h.color, flexShrink: 0,
-                  boxShadow: `0 0 5px ${h.color}55`,
-                }} />
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: h.color, flexShrink: 0 }} />
 
                 {/* Editable label */}
                 {editingId === h.id ? (
@@ -223,71 +221,98 @@ export default function Project100({ session, onBack }) {
                       if (e.key === "Enter") { renameHabit(h.id, editVal.trim() || h.label); setEditingId(null); }
                       if (e.key === "Escape") setEditingId(null);
                     }}
-                    style={{
-                      flex: 1, background: "transparent", border: "none",
-                      borderBottom: "1px solid #555", color: "#fff",
-                      fontSize: 10, fontFamily: "inherit", outline: "none", letterSpacing: 1,
-                    }}
+                    style={{ flex: 1, background: "transparent", border: "none", borderBottom: "1px solid #555", color: "#fff", fontSize: 10, fontFamily: "inherit", outline: "none", letterSpacing: 1 }}
                   />
                 ) : (
                   <span
                     onClick={() => { setEditingId(h.id); setEditVal(h.label); }}
-                    style={{ flex: 1, fontSize: 10, letterSpacing: 1, cursor: "pointer", borderBottom: "1px dashed #2a2a2a" }}
+                    style={{ flex: 1, fontSize: 10, letterSpacing: 1, cursor: "pointer", borderBottom: "1px dashed #2a2a2a", textDecoration: isDoneToday ? "line-through" : "none", color: isDoneToday ? "#555" : "#fff" }}
                     title="Click to rename"
                   >
                     {h.label}
                   </span>
                 )}
 
-                {/* Ring number badge */}
-                <span style={{ fontSize: 8, color: "#333", letterSpacing: 1, flexShrink: 0 }}>R{i + 1}</span>
-
                 {/* Delete */}
                 <button
                   onClick={() => deleteHabit(h.id)}
-                  style={{ background: "none", border: "none", color: "#333", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
+                  style={{ background: "none", border: "none", color: "#2a2a2a", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
                   title="Remove"
                 >
                   ×
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           <button
             onClick={addHabit}
-            style={{ marginTop: 10, width: "100%", padding: "7px 0", background: "#1a1a1a", border: "1px dashed #2a2a2a", borderRadius: 8, color: "#444", fontSize: 9, cursor: "pointer", letterSpacing: 1 }}
+            style={{ marginTop: 8, width: "100%", padding: "7px 0", background: "#1a1a1a", border: "1px dashed #2a2a2a", borderRadius: 8, color: "#444", fontSize: 9, cursor: "pointer", letterSpacing: 1 }}
           >
             + ADD HABIT
           </button>
 
           {/* State legend */}
-          <div style={{ marginTop: 18, borderTop: "1px solid #1a1a1a", paddingTop: 14 }}>
-            <div style={{ fontSize: 8, color: "#2a2a2a", letterSpacing: 1, marginBottom: 8 }}>SEGMENT STATES (CLICK TO CYCLE)</div>
+          <div style={{ marginTop: 16, borderTop: "1px solid #1a1a1a", paddingTop: 14 }}>
+            <div style={{ fontSize: 8, color: "#2a2a2a", letterSpacing: 1, marginBottom: 7 }}>WHEEL SEGMENTS (CLICK TO CYCLE)</div>
             {[
               { label: "EMPTY",   fill: "#1a1a1a", border: "#333" },
               { label: "DONE",    fill: "#00FF88", border: "#00FF88" },
               { label: "PARTIAL", fill: "#00FF8866", border: "#00FF8888" },
               { label: "MISSED",  fill: "#2a0a00", border: "#FF6B35" },
             ].map(s => (
-              <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
-                <div style={{ width: 13, height: 13, borderRadius: 3, background: s.fill, border: `1px solid ${s.border}`, flexShrink: 0 }} />
-                <span style={{ fontSize: 9, color: "#3a3a3a", letterSpacing: 1 }}>{s.label}</span>
+              <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+                <div style={{ width: 12, height: 12, borderRadius: 3, background: s.fill, border: `1px solid ${s.border}`, flexShrink: 0 }} />
+                <span style={{ fontSize: 8, color: "#3a3a3a", letterSpacing: 1 }}>{s.label}</span>
               </div>
             ))}
           </div>
+
+          {/* Summary */}
+          <div style={{ marginTop: 16, borderTop: "1px solid #1a1a1a", paddingTop: 14 }}>
+            <div style={{ fontSize: 8, color: "#2a2a2a", letterSpacing: 1, marginBottom: 8 }}>SUMMARY · {elapsed}d ELAPSED</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {habits.map((h, hIdx) => {
+                let done = 0;
+                for (let d = 0; d < elapsed; d++) { if ((wheel[`${hIdx}-${d}`] || 0) === 1) done++; }
+                const pct = elapsed > 0 ? Math.round((done / elapsed) * 100) : 0;
+                return (
+                  <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: h.color, flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 9, color: "#555", letterSpacing: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.label}</span>
+                    <span style={{ fontSize: 9, color: "#444" }}>{done}/{elapsed}</span>
+                    <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 13, color: pct >= 70 ? "#00FF88" : "#FF3B3B", minWidth: 32, textAlign: "right" }}>{pct}%</span>
+                  </div>
+                );
+              })}
+              {(() => {
+                let totalDone = 0;
+                const totalPossible = elapsed * habits.length;
+                for (let hIdx = 0; hIdx < habits.length; hIdx++) {
+                  for (let d = 0; d < elapsed; d++) { if ((wheel[`${hIdx}-${d}`] || 0) === 1) totalDone++; }
+                }
+                const pct = totalPossible > 0 ? Math.round((totalDone / totalPossible) * 100) : 0;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, borderTop: "1px solid #1a1a1a", paddingTop: 5, marginTop: 2 }}>
+                    <span style={{ flex: 1, fontSize: 9, color: "#888", letterSpacing: 1 }}>OVERALL</span>
+                    <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 16, color: pct >= 70 ? "#00FF88" : "#FF3B3B", filter: `drop-shadow(0 0 5px ${pct >= 70 ? "#00FF8855" : "#FF3B3B55"})` }}>{pct}%</span>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
         </div>
 
-        {/* RIGHT: Circular habit wheel */}
-        <div style={{ flex: 1, minWidth: 500, display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <div style={{ fontSize: 8, color: "#2a2a2a", letterSpacing: 2, marginBottom: 6 }}>
+        {/* RIGHT: Circular habit wheel — fills full height */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", overflow: "hidden", padding: "12px 8px" }}>
+          <div style={{ fontSize: 8, color: "#2a2a2a", letterSpacing: 2, marginBottom: 4 }}>
             84-DAY HABIT WHEEL · CLICK ANY SEGMENT TO LOG
           </div>
 
           <svg
-            width={svgSize}
-            height={svgSize}
-            style={{ maxWidth: "100%", overflow: "visible" }}
+            viewBox={`0 0 ${svgSize} ${svgSize}`}
+            style={{ width: "100%", height: "100%", maxHeight: "calc(100vh - 80px)", overflow: "visible" }}
           >
             {/* Rings */}
             {habits.map((habit, hIdx) => {
@@ -358,49 +383,6 @@ export default function Project100({ session, onBack }) {
             <text x={cx} y={cy + 14} textAnchor="middle" fill="#fff" fontSize={30} fontFamily="Bebas Neue, cursive" letterSpacing={2}>{projectDayNum}</text>
             <text x={cx} y={cy + 30} textAnchor="middle" fill="#333" fontSize={7} fontFamily="DM Mono, monospace" letterSpacing={1}>OF 84</text>
           </svg>
-        </div>
-      </div>
-
-      {/* ── Summary row ────────────────────────────────────────────────────────── */}
-      <div style={{ margin: "0 24px 32px", background: "#111", border: "1px solid #1e1e1e", borderRadius: 16, padding: "14px 18px" }}>
-        <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 13, letterSpacing: 3, color: "#333", marginBottom: 10 }}>SUMMARY · {elapsed} DAY{elapsed !== 1 ? "S" : ""} ELAPSED</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          {habits.map((h, hIdx) => {
-            let done = 0;
-            for (let d = 0; d < elapsed; d++) {
-              if ((wheel[`${hIdx}-${d}`] || 0) === 1) done++;
-            }
-            const pct = elapsed > 0 ? Math.round((done / elapsed) * 100) : 0;
-            return (
-              <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#181818", borderRadius: 8, padding: "7px 13px", border: "1px solid #1e1e1e" }}>
-                <div style={{ width: 7, height: 7, borderRadius: "50%", background: h.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 9, color: "#666", letterSpacing: 1 }}>{h.label}</span>
-                <span style={{ fontSize: 9, color: h.color, letterSpacing: 1 }}>{done}/{elapsed}</span>
-                <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 14, color: pct >= 70 ? "#00FF88" : pct >= 40 ? "#FFD700" : "#FF3B3B" }}>{pct}%</span>
-              </div>
-            );
-          })}
-
-          {/* Overall */}
-          {(() => {
-            let totalDone = 0;
-            const totalPossible = elapsed * habits.length;
-            for (let hIdx = 0; hIdx < habits.length; hIdx++) {
-              for (let d = 0; d < elapsed; d++) {
-                if ((wheel[`${hIdx}-${d}`] || 0) === 1) totalDone++;
-              }
-            }
-            const pct = totalPossible > 0 ? Math.round((totalDone / totalPossible) * 100) : 0;
-            return (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#181818", borderRadius: 8, padding: "7px 13px", border: "1px solid #2a2a2a" }}>
-                <span style={{ fontSize: 9, color: "#aaa", letterSpacing: 1 }}>OVERALL</span>
-                <span style={{ fontSize: 9, color: "#555", letterSpacing: 1 }}>{totalDone}/{totalPossible}</span>
-                <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: pct >= 70 ? "#00FF88" : pct >= 40 ? "#FFD700" : "#FF3B3B", filter: `drop-shadow(0 0 6px ${pct >= 70 ? "#00FF8866" : pct >= 40 ? "#FFD70066" : "#FF3B3B66"})` }}>
-                  {pct}%
-                </span>
-              </div>
-            );
-          })()}
         </div>
       </div>
     </div>
