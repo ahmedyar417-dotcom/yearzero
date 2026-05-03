@@ -274,19 +274,36 @@ export default function HealthPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // On mount: pull today's data from Supabase (captures Apple Health from iOS Shortcut)
   useEffect(() => {
     const saved = ls.get(HEALTH_KEY());
     if (saved) setData(saved);
+    fetch("/api/health-today")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.apple || json.whoop) {
+          const merged = { ...ls.get(HEALTH_KEY()), ...json };
+          ls.set(HEALTH_KEY(), merged);
+          setData(merged);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const fetchWhoop = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/whoop");
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "WHOOP fetch failed");
-      const merged = { ...ls.get(HEALTH_KEY()), whoop: json };
+      // Fetch fresh WHOOP data
+      const whoopRes = await fetch("/api/whoop");
+      const whoopJson = await whoopRes.json();
+      if (!whoopRes.ok) throw new Error(whoopJson.error || "WHOOP fetch failed");
+
+      // Also pull latest Supabase data (includes Apple Health from iOS Shortcut)
+      const todayRes = await fetch("/api/health-today");
+      const todayJson = await todayRes.json();
+
+      const merged = { ...ls.get(HEALTH_KEY()), ...todayJson, whoop: whoopJson };
       ls.set(HEALTH_KEY(), merged);
       setData(merged);
     } catch (e) {
