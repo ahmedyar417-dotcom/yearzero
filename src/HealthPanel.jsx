@@ -176,6 +176,7 @@ export default function HealthPanel({ session }) {
         <StatCard label="Protein" value={fmt(a?.protein_g, "g")} color="#00FF88" />
         <StatCard label="Carbs" value={fmt(a?.carbs_g, "g")} color="#FFD700" />
         <StatCard label="Fat" value={fmt(a?.fat_g, "g")} color="#A78BFA" />
+        <StatCard label="Sugar" value={fmt(a?.sugar_g, "g")} color="#FF6B35" />
 
         {/* Mindfulness */}
         <SectionHeader label="Mindfulness" />

@@ -25,6 +25,7 @@ export default async function handler(req, res) {
     carbs_g:        parse(src.carbs_g),
     fat_g:          parse(src.fat_g),
     mindful_minutes: parse(src.mindful_minutes),
+    sugar_g:         parse(src.sugar_g),
     fetchedAt:      new Date().toISOString(),
   };
 
