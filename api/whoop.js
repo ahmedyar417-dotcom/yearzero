@@ -5,11 +5,25 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { WHOOP_CLIENT_ID, WHOOP_CLIENT_SECRET, WHOOP_REFRESH_TOKEN } = process.env;
-  if (!WHOOP_CLIENT_ID || !WHOOP_CLIENT_SECRET || !WHOOP_REFRESH_TOKEN) {
-    return res.status(500).json({ error: 'WHOOP credentials not configured. Set WHOOP_CLIENT_ID, WHOOP_CLIENT_SECRET, WHOOP_REFRESH_TOKEN in Vercel env vars.' });
+  if (!WHOOP_CLIENT_ID || !WHOOP_CLIENT_SECRET) {
+    return res.status(500).json({ error: 'WHOOP credentials not configured.' });
   }
 
+  const sbUrl = process.env.SUPABASE_URL || 'https://mypnnyamygoigaimdypd.supabase.co';
+  const sbKey = process.env.SUPABASE_SERVICE_KEY;
+  const userId = process.env.SUPABASE_USER_ID;
+
   try {
+    // Read refresh token from Supabase (updated on each rotation), fall back to env var
+    let refreshToken = WHOOP_REFRESH_TOKEN;
+    if (sbKey && userId) {
+      const stored = await fetch(`${sbUrl}/rest/v1/yz_data?user_id=eq.${userId}&key=eq.whoop-refresh-token&select=value`, {
+        headers: { Authorization: `Bearer ${sbKey}`, apikey: sbKey },
+      }).then(r => r.json()).catch(() => []);
+      if (stored?.[0]?.value?.token) refreshToken = stored[0].value.token;
+    }
+    if (!refreshToken) return res.status(500).json({ error: 'No WHOOP refresh token available.' });
+
     // Exchange refresh token for access token
     const tokenRes = await fetch('https://api.prod.whoop.com/oauth/oauth2/token', {
       method: 'POST',
@@ -28,7 +42,32 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'WHOOP token refresh failed', detail });
     }
 
-    const { access_token } = await tokenRes.json();
+    const tokenJson = await tokenRes.json();
+    const access_token = tokenJson.access_token;
+
+    // Save rotated refresh token to Supabase so it persists across calls
+    if (tokenJson.refresh_token) {
+      const sbUrl = process.env.SUPABASE_URL || 'https://mypnnyamygoigaimdypd.supabase.co';
+      const sbKey = process.env.SUPABASE_SERVICE_KEY;
+      const userId = process.env.SUPABASE_USER_ID;
+      if (sbKey && userId) {
+        await fetch(`${sbUrl}/rest/v1/yz_data`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${sbKey}`,
+            apikey: sbKey,
+            Prefer: 'resolution=merge-duplicates',
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            key: 'whoop-refresh-token',
+            value: { token: tokenJson.refresh_token },
+            updated_at: new Date().toISOString(),
+          }),
+        }).catch(() => {});
+      }
+    }
     const headers = { Authorization: `Bearer ${access_token}` };
     const base = 'https://api.prod.whoop.com/developer';
 
