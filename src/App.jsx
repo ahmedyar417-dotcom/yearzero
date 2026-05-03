@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import MacroTracker from "./MacroTracker";
 import Project100 from "./Project100";
+import HealthPanel from "./HealthPanel";
+import OutreachPanel from "./OutreachPanel";
 import { supabase } from "./supabase";
 import AuthScreen from "./AuthScreen";
 
@@ -816,6 +818,7 @@ export default function App() {
   const [supabaseData,    setSupabaseData]    = useState(null);
   const [reloadTick,      setReloadTick]      = useState(0); // increment to trigger reload from localStorage
   const [showP100,        setShowP100]        = useState(false);
+  const [showLiveStats,   setShowLiveStats]   = useState(false);
   // Editable config state
   const [sections,  setSections]  = useState(() => ls.get("yz-sections") || DEFAULT_SECTIONS);
   const [sched,     setSched]     = useState(() => ls.get("yz-sched")    || DEFAULT_SCHED);
@@ -1150,8 +1153,21 @@ export default function App() {
       {supabaseData !== null && <SupabaseInspectorModal data={supabaseData} onClose={() => setSupabaseData(null)} />}
 
       {showP100 && <Project100 session={session} onBack={() => setShowP100(false)} />}
-      {showP100 && null /* hide dashboard below */}
-      {!showP100 && <>
+      {showLiveStats && (
+        <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "#fff", fontFamily: "'DM Mono', monospace" }}>
+          <div style={{ borderBottom: "1px solid #1a1a1a", padding: "14px 20px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, background: "#0a0a0a", zIndex: 100 }}>
+            <button onClick={() => setShowLiveStats(false)} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "5px 12px", cursor: "pointer", fontSize: 10, color: "#A78BFA", letterSpacing: 1 }}>
+              ← BACK
+            </button>
+            <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, letterSpacing: 3, color: "#A78BFA" }}>LIVE STATS</span>
+          </div>
+          <HealthPanel session={session} />
+          <div style={{ borderTop: "1px solid #1a1a1a", margin: "0 20px" }} />
+          <OutreachPanel />
+        </div>
+      )}
+      {(showP100 || showLiveStats) && null}
+      {!showP100 && !showLiveStats && <>
 
 
       {/* Save flash */}
@@ -1207,6 +1223,9 @@ export default function App() {
           </button>
           <button onClick={() => setShowP100(true)} style={{ background: "#FF6B3518", border: "1px solid #FF6B3555", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#FF6B35", letterSpacing: 1 }}>
             ◉ P100
+          </button>
+          <button onClick={() => setShowLiveStats(true)} style={{ background: "#A78BFA18", border: "1px solid #A78BFA55", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#A78BFA", letterSpacing: 1 }}>
+            ◈ LIVE STATS
           </button>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
