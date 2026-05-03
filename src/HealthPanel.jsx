@@ -39,6 +39,111 @@ const ls = {
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 
+// Pure SVG sparkline — decorative multi-line chart
+function Sparkline({ datasets, legend, w = 145, h = 52 }) {
+  const pad = { top: 4, bottom: 4, left: 2, right: 2 };
+  const iw = w - pad.left - pad.right;
+  const ih = h - pad.top - pad.bottom;
+
+  const makePath = (values) => {
+    const n = values.length;
+    return values.reduce((acc, v, i) => {
+      const x = pad.left + (i / (n - 1)) * iw;
+      const y = pad.top + (1 - v) * ih;
+      if (i === 0) return `M ${x},${y}`;
+      const px = pad.left + ((i - 1) / (n - 1)) * iw;
+      const pv = values[i - 1];
+      const py = pad.top + (1 - pv) * ih;
+      const cpx = (px + x) / 2;
+      return `${acc} C ${cpx},${py} ${cpx},${y} ${x},${y}`;
+    }, "");
+  };
+
+  return (
+    <div>
+      <svg width={w} height={h} style={{ display: "block", overflow: "visible" }}>
+        {datasets.map((ds, i) => (
+          <path
+            key={i}
+            d={makePath(ds.values)}
+            fill="none"
+            stroke={ds.color}
+            strokeWidth={1.5}
+            strokeDasharray={ds.dashed ? "4 3" : undefined}
+            opacity={0.85}
+          />
+        ))}
+      </svg>
+      {legend && (
+        <div style={{ display: "flex", gap: 7, marginTop: 5, flexWrap: "wrap" }}>
+          {legend.map((l) => (
+            <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+              <svg width={12} height={3} style={{ overflow: "visible" }}>
+                <line x1={0} y1={1.5} x2={12} y2={1.5}
+                  stroke={l.color} strokeWidth={1.5}
+                  strokeDasharray={l.dashed ? "3 2" : undefined}
+                />
+              </svg>
+              <span style={{ fontSize: 7.5, color: "#3a3a3a", letterSpacing: 0.5 }}>{l.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// SVG donut chart — uses real macro data
+function DonutChart({ protein, carbs, fat }) {
+  const r = 26, cx = 36, cy = 36;
+  const circ = 2 * Math.PI * r;
+  const total = (protein || 0) + (carbs || 0) + (fat || 0);
+
+  const segments = [
+    { value: protein || 0, color: "#00FF88", label: "PROTEIN" },
+    { value: carbs || 0, color: "#FFD700", label: "CARBS" },
+    { value: fat || 0, color: "#A78BFA", label: "FAT" },
+  ];
+
+  let cumPct = 0;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <svg width={72} height={72} style={{ flexShrink: 0 }}>
+        {total === 0 ? (
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1f1f1f" strokeWidth={9} />
+        ) : segments.map((s, i) => {
+          const pct = s.value / total;
+          const dash = pct * circ;
+          const offset = circ - cumPct * circ;
+          cumPct += pct;
+          return (
+            <circle
+              key={i}
+              cx={cx} cy={cy} r={r}
+              fill="none"
+              stroke={s.color}
+              strokeWidth={9}
+              strokeDasharray={`${dash} ${circ}`}
+              strokeDashoffset={offset}
+              style={{ transform: "rotate(-90deg)", transformOrigin: `${cx}px ${cy}px` }}
+            />
+          );
+        })}
+      </svg>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        {segments.map((s) => (
+          <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: s.color, opacity: total === 0 ? 0.2 : 1 }} />
+            <span style={{ fontSize: 8, color: "#3a3a3a", letterSpacing: 0.5 }}>
+              {s.label} {total > 0 ? Math.round((s.value / total) * 100) : 0}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function HeroCard({ label, value, sub1, sub2, gradient }) {
   return (
     <div style={{
@@ -72,7 +177,7 @@ function Metric({ label, value, color }) {
   );
 }
 
-function Panel({ title, main, mainSub, mainColor, metrics }) {
+function Panel({ title, main, mainSub, mainColor, metrics, chart }) {
   return (
     <div style={{
       background: "#111",
@@ -84,13 +189,18 @@ function Panel({ title, main, mainSub, mainColor, metrics }) {
       gap: 14,
     }}>
       <span style={{ fontSize: 9, color: "#3a3a3a", letterSpacing: 2, fontWeight: 700 }}>{title.toUpperCase()}</span>
-      <div>
-        <div style={{ fontSize: 46, fontWeight: 800, color: mainColor || "#fff", lineHeight: 1, fontFamily: "system-ui, -apple-system, sans-serif" }}>
-          {main}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 44, fontWeight: 800, color: mainColor || "#fff", lineHeight: 1, fontFamily: "system-ui, -apple-system, sans-serif" }}>
+            {main}
+          </div>
+          {mainSub && <div style={{ fontSize: 11, color: "#4a4a4a", marginTop: 6 }}>{mainSub}</div>}
         </div>
-        {mainSub && <div style={{ fontSize: 11, color: "#4a4a4a", marginTop: 6 }}>{mainSub}</div>}
+        {chart && <div style={{ flexShrink: 0, marginTop: 2 }}>{chart}</div>}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", paddingTop: 4, borderTop: "1px solid #1c1c1c" }}>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", paddingTop: 12, borderTop: "1px solid #1c1c1c" }}>
         {metrics.map(({ label, value, color }) => (
           <Metric key={label} label={label} value={value} color={color} />
         ))}
@@ -98,6 +208,66 @@ function Panel({ title, main, mainSub, mainColor, metrics }) {
     </div>
   );
 }
+
+// Static sparkline data — decorative; reflects shape of each metric type
+const SPARKLINES = {
+  recovery: {
+    datasets: [
+      { values: [0.42, 0.36, 0.40, 0.30, 0.34, 0.28, 0.32], color: "#00FF88" },
+      { values: [0.62, 0.64, 0.59, 0.65, 0.62, 0.64, 0.61], color: "#FF6B35" },
+      { values: [0.72, 0.68, 0.74, 0.70, 0.76, 0.71, 0.74], color: "#A78BFA" },
+      { values: [0.91, 0.92, 0.90, 0.93, 0.91, 0.92, 0.94], color: "#FFD700" },
+    ],
+    legend: [
+      { label: "RECOVERY", color: "#00FF88" },
+      { label: "RHR", color: "#FF6B35" },
+      { label: "HRV", color: "#A78BFA" },
+      { label: "SPO2", color: "#FFD700" },
+    ],
+  },
+  pulse: {
+    datasets: [
+      { values: [0.5, 0.5, 0.52, 0.5, 0.12, 0.92, 0.48, 0.44, 0.5, 0.5, 0.52, 0.5, 0.12, 0.92, 0.48, 0.44, 0.5], color: "#1AE8B4" },
+    ],
+    legend: [{ label: "PULSE TRACE", color: "#1AE8B4" }],
+  },
+  sleep: {
+    datasets: [
+      { values: [0.72, 0.68, 0.73, 0.70, 0.75, 0.71, 0.73], color: "#FFD700" },
+      { values: [0.44, 0.47, 0.43, 0.50, 0.46, 0.49, 0.47], color: "#6366f1" },
+      { values: [0.28, 0.32, 0.30, 0.35, 0.29, 0.33, 0.31], color: "#A78BFA" },
+    ],
+    legend: [
+      { label: "CORE", color: "#FFD700" },
+      { label: "DEEP", color: "#6366f1" },
+      { label: "REM", color: "#A78BFA" },
+    ],
+  },
+  body: {
+    datasets: [
+      { values: [0.58, 0.60, 0.56, 0.59, 0.55, 0.57, 0.54], color: "#60A5FA" },
+      { values: [0.59, 0.57, 0.55, 0.53, 0.51, 0.49, 0.47], color: "#555", dashed: true },
+    ],
+    legend: [
+      { label: "WEIGHT", color: "#60A5FA" },
+      { label: "TREND", color: "#555", dashed: true },
+    ],
+  },
+  activity: {
+    datasets: [
+      { values: [0.38, 0.55, 0.45, 0.62, 0.40, 0.58, 0.50], color: "#A78BFA" },
+      { values: [0.28, 0.44, 0.36, 0.50, 0.32, 0.46, 0.40], color: "#00FF88" },
+      { values: [0.22, 0.38, 0.30, 0.45, 0.26, 0.40, 0.34], color: "#FFD700" },
+      { values: [0.30, 0.33, 0.36, 0.39, 0.42, 0.45, 0.48], color: "#555", dashed: true },
+    ],
+    legend: [
+      { label: "STEPS", color: "#A78BFA" },
+      { label: "ENERGY", color: "#00FF88" },
+      { label: "STRAIN", color: "#FFD700" },
+      { label: "TREND", color: "#555", dashed: true },
+    ],
+  },
+};
 
 export default function HealthPanel() {
   const [data, setData] = useState(() => ls.get(HEALTH_KEY()) || {});
@@ -207,7 +377,7 @@ export default function HealthPanel() {
         />
       </div>
 
-      {/* Panel grid — Recovery | Pulse | Sleep / Body | Activity | Nutrition */}
+      {/* Panel grid: Recovery | Pulse | Sleep / Body | Activity | Nutrition */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
 
         <Panel
@@ -215,6 +385,7 @@ export default function HealthPanel() {
           main={fmt(recScore)}
           mainSub={recoveryLabel(recScore)}
           mainColor={recColor}
+          chart={<Sparkline {...SPARKLINES.recovery} />}
           metrics={[
             { label: "RHR", value: fmt(w?.recovery?.rhr, " bpm") },
             { label: "HRV", value: fmt(w?.recovery?.hrv, " ms"), color: "#A78BFA" },
@@ -228,6 +399,7 @@ export default function HealthPanel() {
           main={w?.recovery?.rhr != null ? `${w.recovery.rhr} bpm` : "—"}
           mainSub="WHOOP resting heart rate"
           mainColor="#fff"
+          chart={<Sparkline {...SPARKLINES.pulse} />}
           metrics={[
             { label: "Cycle Avg", value: fmt(w?.avgHr, " bpm") },
             { label: "Max HR", value: fmt(w?.maxHr, " bpm"), color: "#FF6B35" },
@@ -241,6 +413,7 @@ export default function HealthPanel() {
           main={msToHm(w?.sleep?.totalMs)}
           mainSub={w?.sleep?.efficiency != null ? `${w.sleep.efficiency}% efficiency` : undefined}
           mainColor="#A78BFA"
+          chart={<Sparkline {...SPARKLINES.sleep} />}
           metrics={[
             { label: "Deep", value: msToHm(w?.sleep?.deepMs), color: "#6366f1" },
             { label: "REM", value: msToHm(w?.sleep?.remMs), color: "#A78BFA" },
@@ -254,6 +427,7 @@ export default function HealthPanel() {
           main={a?.weight_lb != null ? `${a.weight_lb.toFixed(1)} lb` : "—"}
           mainSub={a?.body_fat_pct != null ? `${a.body_fat_pct.toFixed(1)}% body fat` : "Run shortcut to sync"}
           mainColor="#FFD700"
+          chart={<Sparkline {...SPARKLINES.body} />}
           metrics={[
             { label: "BF Est", value: fmt(a?.body_fat_pct, "%", 1) },
             { label: "Steps", value: a?.steps != null ? Math.round(a.steps).toLocaleString() : "—", color: "#00FF88" },
@@ -267,6 +441,7 @@ export default function HealthPanel() {
           main={strainVal != null ? strainVal.toFixed(1) : "—"}
           mainSub="Strain score"
           mainColor={sColor}
+          chart={<Sparkline {...SPARKLINES.activity} />}
           metrics={[
             { label: "Steps", value: a?.steps != null ? Math.round(a.steps).toLocaleString() : "—", color: "#00FF88" },
             { label: "Walk", value: fmt(a?.distance_mi, " mi", 1) },
@@ -280,6 +455,7 @@ export default function HealthPanel() {
           main={a?.calories != null ? Math.round(a.calories).toLocaleString() : "0"}
           mainSub={a?.protein_g != null ? `${Math.round(a.protein_g)}g / 180g protein` : "/ 1,900 kcal target"}
           mainColor="#FF6B35"
+          chart={<DonutChart protein={a?.protein_g} carbs={a?.carbs_g} fat={a?.fat_g} />}
           metrics={[
             { label: "Protein", value: fmt(a?.protein_g, "g"), color: "#00FF88" },
             { label: "Carbs", value: fmt(a?.carbs_g, "g"), color: "#FFD700" },
