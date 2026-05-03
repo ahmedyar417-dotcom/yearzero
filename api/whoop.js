@@ -32,8 +32,7 @@ export default async function handler(req, res) {
         grant_type: 'refresh_token',
         client_id: WHOOP_CLIENT_ID,
         client_secret: WHOOP_CLIENT_SECRET,
-        refresh_token: WHOOP_REFRESH_TOKEN,
-        scope: 'offline read:recovery read:cycles read:sleep read:workout read:body_measurement',
+        refresh_token: refreshToken,
       }),
     });
 
