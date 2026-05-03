@@ -50,21 +50,39 @@ export default async function handler(req, res) {
       const sbKey = process.env.SUPABASE_SERVICE_KEY;
       const userId = process.env.SUPABASE_USER_ID;
       if (sbKey && userId) {
-        await fetch(`${sbUrl}/rest/v1/yz_data`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${sbKey}`,
-            apikey: sbKey,
-            Prefer: 'resolution=merge-duplicates',
-          },
-          body: JSON.stringify({
-            user_id: userId,
-            key: 'whoop-refresh-token',
-            value: { token: tokenJson.refresh_token },
-            updated_at: new Date().toISOString(),
-          }),
-        }).catch(() => {});
+        // Use PATCH to update existing row — more reliable than POST+merge-duplicates
+        const patchRes = await fetch(
+          `${sbUrl}/rest/v1/yz_data?user_id=eq.${userId}&key=eq.whoop-refresh-token`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${sbKey}`,
+              apikey: sbKey,
+            },
+            body: JSON.stringify({
+              value: { token: tokenJson.refresh_token },
+              updated_at: new Date().toISOString(),
+            }),
+          }
+        ).catch(() => null);
+        // If no row existed yet, insert it
+        if (!patchRes || patchRes.status === 404) {
+          await fetch(`${sbUrl}/rest/v1/yz_data`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${sbKey}`,
+              apikey: sbKey,
+            },
+            body: JSON.stringify({
+              user_id: userId,
+              key: 'whoop-refresh-token',
+              value: { token: tokenJson.refresh_token },
+              updated_at: new Date().toISOString(),
+            }),
+          }).catch(() => {});
+        }
       }
     }
     const headers = { Authorization: `Bearer ${access_token}` };
