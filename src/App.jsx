@@ -265,7 +265,7 @@ const normAllChecks = (rawChecks, secs) => {
 };
 
 // ─── InlineEdit ───────────────────────────────────────────────────────────────
-function InlineEdit({ value, onSave, editMode, style = {}, number = false }) {
+function InlineEdit({ value, onSave, editMode, style = {}, number = false, isDark = true }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(String(value));
 
@@ -294,11 +294,11 @@ function InlineEdit({ value, onSave, editMode, style = {}, number = false }) {
         }}
         onClick={e => e.stopPropagation()}
         style={{
-          background: "#0d0d0d",
+          background: isDark ? "#0d0d0d" : "#f5f5f5",
           border: "none",
-          borderBottom: "1px solid #666",
+          borderBottom: `1px solid ${isDark ? "#666" : "#bbb"}`,
           outline: "none",
-          color: style.color || "#fff",
+          color: style.color || (isDark ? "#fff" : "#1a1a1a"),
           fontSize: style.fontSize || 12,
           fontFamily: style.fontFamily || "inherit",
           letterSpacing: style.letterSpacing || "inherit",
@@ -317,7 +317,7 @@ function InlineEdit({ value, onSave, editMode, style = {}, number = false }) {
     <span
       onClick={e => { e.stopPropagation(); setEditing(true); }}
       title="Click to edit"
-      style={{ ...style, cursor: "text", borderBottom: "1px dashed #444" }}
+      style={{ ...style, cursor: "text", borderBottom: `1px dashed ${isDark ? "#444" : "#bbb"}` }}
     >
       {value}
     </span>
@@ -341,11 +341,12 @@ function ColorSwatch({ color, onSave, editMode }) {
 }
 
 // ─── Ring ─────────────────────────────────────────────────────────────────────
-function Ring({ pct, color, size = 60 }) {
+function Ring({ pct, color, size = 60, gt }) {
   const r = (size - 8) / 2, circ = 2 * Math.PI * r, dash = Math.min(pct / 100, 1) * circ;
+  const track = gt ? gt.ringTrack : "#1e1e1e";
   return (
     <svg width={size} height={size} style={{ transform: "rotate(-90deg)", flexShrink: 0 }}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#1e1e1e" strokeWidth={5} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={5} />
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={5}
         strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
         style={{ transition: "stroke-dasharray 0.5s ease", filter: `drop-shadow(0 0 5px ${color}88)` }} />
@@ -354,79 +355,86 @@ function Ring({ pct, color, size = 60 }) {
 }
 
 // ─── CheckRow ─────────────────────────────────────────────────────────────────
-function CheckRow({ label, unit, done, color, onToggle, editMode, onUpdateLabel, onUpdateUnit, onDelete }) {
+function CheckRow({ label, unit, done, color, onToggle, editMode, onUpdateLabel, onUpdateUnit, onDelete, gt, isDark }) {
+  const G = gt || { rowSep: "#181818", taskText: "#bbb", subtext: "#555", dim: "#333", emptyCheck: "#3a3a3a" };
   if (editMode) {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: "1px solid #181818" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${G.rowSep}` }}>
         <InlineEdit value={label} onSave={onUpdateLabel} editMode={true}
-          style={{ fontSize: 12, color: "#bbb", flex: 1, minWidth: 0 }} />
-        <span style={{ color: "#333", fontSize: 11, flexShrink: 0 }}>·</span>
+          style={{ fontSize: 12, color: G.taskText, flex: 1, minWidth: 0 }} isDark={isDark} />
+        <span style={{ color: G.dim, fontSize: 11, flexShrink: 0 }}>·</span>
         <InlineEdit value={unit} onSave={onUpdateUnit} editMode={true}
-          style={{ fontSize: 11, color: "#555", flexShrink: 0 }} />
+          style={{ fontSize: 11, color: G.subtext, flexShrink: 0 }} isDark={isDark} />
         <button onClick={onDelete}
-          style={{ background: "none", border: "none", color: "#444", fontSize: 16, cursor: "pointer", padding: "0 4px", lineHeight: 1, flexShrink: 0 }}
+          style={{ background: "none", border: "none", color: G.subtext, fontSize: 16, cursor: "pointer", padding: "0 4px", lineHeight: 1, flexShrink: 0 }}
           title="Delete">×</button>
       </div>
     );
   }
   return (
-    <button onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer", padding: "5px 0", width: "100%", textAlign: "left" }}>
-      <span style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${done ? color : "#3a3a3a"}`, background: done ? color + "22" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.18s", boxShadow: done ? `0 0 7px ${color}55` : "none" }}>
+    <button onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer", padding: "6px 0", width: "100%", textAlign: "left", borderBottom: `1px solid ${G.rowSep}` }}>
+      <span style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${done ? color : G.emptyCheck}`, background: done ? color + "22" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.18s" }}>
         {done && <span style={{ color, fontSize: 11, fontWeight: 900, lineHeight: 1 }}>✓</span>}
       </span>
-      <span style={{ fontSize: 13, color: done ? "#444" : "#bbb", textDecoration: done ? "line-through" : "none", letterSpacing: 0.2 }}>
-        {label} · {unit}
+      <span style={{ fontSize: 13, color: done ? G.dim : G.taskText, textDecoration: done ? "line-through" : "none", letterSpacing: 0.2, flex: 1, textAlign: "left" }}>
+        {label}
       </span>
+      <span style={{ fontSize: 10, color: G.subtext, flexShrink: 0 }}>{unit}</span>
     </button>
   );
 }
 
 // ─── InputModal ───────────────────────────────────────────────────────────────
-function InputModal({ item, color, onSave, onClose }) {
+function InputModal({ item, color, onSave, onClose, isDark = true }) {
   const [val, setVal] = useState(item.actual ?? 0);
   const isCheck = item.type === "check";
   const step = item.step || 1;
   const pct = Math.min(Math.round((val / item.target) * 100), 100);
+  const mb = isDark ? "#141414" : "#fff";
+  const mb2 = isDark ? "#1a1a1a" : "#f5f5f5";
+  const mb3 = isDark ? "#2a2a2a" : "#e0e0e0";
+  const mt = isDark ? "#fff" : "#1a1a1a";
+  const ms = isDark ? "#555" : "#888";
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "#000d", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#141414", border: `1px solid ${color}55`, borderRadius: 18, padding: 28, width: "min(340px, 94vw)" }}>
-        <p style={{ fontSize: 9, color: "#555", letterSpacing: 2, margin: "0 0 4px" }}>LOG PROGRESS</p>
-        <p style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, color: "#fff", letterSpacing: 1, margin: "0 0 4px" }}>{item.label}</p>
-        <p style={{ fontSize: 11, color: "#555", margin: "0 0 24px" }}>Target: {item.suffix.replace("/ ", "")}</p>
+      <div onClick={e => e.stopPropagation()} style={{ background: mb, border: `1px solid ${color}55`, borderRadius: 18, padding: 28, width: "min(340px, 94vw)" }}>
+        <p style={{ fontSize: 9, color: ms, letterSpacing: 2, margin: "0 0 4px" }}>LOG PROGRESS</p>
+        <p style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, color: mt, letterSpacing: 1, margin: "0 0 4px" }}>{item.label}</p>
+        <p style={{ fontSize: 11, color: ms, margin: "0 0 24px" }}>Target: {item.suffix.replace("/ ", "")}</p>
         {isCheck ? (
           <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
             {["Not done", "Done"].map((opt, i) => (
-              <button key={opt} onClick={() => setVal(i)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: `2px solid ${val === i ? color : "#2a2a2a"}`, background: val === i ? color + "20" : "#1a1a1a", color: val === i ? color : "#555", fontFamily: "'Bebas Neue', cursive", fontSize: 16, letterSpacing: 1, cursor: "pointer" }}>{opt}</button>
+              <button key={opt} onClick={() => setVal(i)} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: `2px solid ${val === i ? color : mb3}`, background: val === i ? color + "20" : mb2, color: val === i ? color : ms, fontFamily: "'Bebas Neue', cursive", fontSize: 16, letterSpacing: 1, cursor: "pointer" }}>{opt}</button>
             ))}
           </div>
         ) : (
           <div style={{ marginBottom: 24 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-              <button onClick={() => setVal(v => Math.max(item.min, parseFloat((v - step).toFixed(2))))} style={{ width: 42, height: 42, borderRadius: 8, border: "1px solid #2a2a2a", background: "#1a1a1a", color: "#aaa", fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>−</button>
+              <button onClick={() => setVal(v => Math.max(item.min, parseFloat((v - step).toFixed(2))))} style={{ width: 42, height: 42, borderRadius: 8, border: `1px solid ${mb3}`, background: mb2, color: isDark ? "#aaa" : "#666", fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>−</button>
               <div style={{ flex: 1, textAlign: "center" }}>
                 <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 52, color, lineHeight: 1, letterSpacing: 2, filter: `drop-shadow(0 0 10px ${color}55)` }}>{val}</div>
-                <div style={{ fontSize: 10, color: "#555", marginTop: 2 }}>{item.unit}</div>
+                <div style={{ fontSize: 10, color: ms, marginTop: 2 }}>{item.unit}</div>
               </div>
-              <button onClick={() => setVal(v => Math.min(item.max, parseFloat((v + step).toFixed(2))))} style={{ width: 42, height: 42, borderRadius: 8, border: "1px solid #2a2a2a", background: "#1a1a1a", color: "#aaa", fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>+</button>
+              <button onClick={() => setVal(v => Math.min(item.max, parseFloat((v + step).toFixed(2))))} style={{ width: 42, height: 42, borderRadius: 8, border: `1px solid ${mb3}`, background: mb2, color: isDark ? "#aaa" : "#666", fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>+</button>
             </div>
             <input type="range" min={item.min} max={item.max} step={step} value={val} onChange={e => setVal(parseFloat(e.target.value))} style={{ width: "100%", accentColor: color, cursor: "pointer" }} />
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-              <span style={{ fontSize: 9, color: "#333" }}>{item.min}</span>
-              <span style={{ fontSize: 9, color: "#333" }}>{item.max}</span>
+              <span style={{ fontSize: 9, color: ms }}>{item.min}</span>
+              <span style={{ fontSize: 9, color: ms }}>{item.max}</span>
             </div>
           </div>
         )}
         <div style={{ marginBottom: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-            <span style={{ fontSize: 10, color: "#555" }}>progress</span>
-            <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 14, color: pct >= 100 ? "#00FF88" : color, letterSpacing: 1 }}>{pct}%</span>
+            <span style={{ fontSize: 10, color: ms }}>progress</span>
+            <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 14, color: pct >= 100 ? "#22c55e" : color, letterSpacing: 1 }}>{pct}%</span>
           </div>
-          <div style={{ height: 5, background: "#1a1a1a", borderRadius: 3, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${pct}%`, background: pct >= 100 ? "#00FF88" : color, borderRadius: 3, transition: "width 0.3s ease" }} />
+          <div style={{ height: 5, background: mb3, borderRadius: 3, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${pct}%`, background: pct >= 100 ? "#22c55e" : color, borderRadius: 3, transition: "width 0.3s ease" }} />
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1px solid #2a2a2a", background: "#1a1a1a", color: "#555", fontSize: 11, cursor: "pointer", letterSpacing: 1 }}>CANCEL</button>
+          <button onClick={onClose} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: `1px solid ${mb3}`, background: mb2, color: ms, fontSize: 11, cursor: "pointer", letterSpacing: 1 }}>CANCEL</button>
           <button onClick={() => onSave(val)} style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: `1px solid ${color}55`, background: color + "20", color, fontFamily: "'Bebas Neue', cursive", fontSize: 17, cursor: "pointer", letterSpacing: 2 }}>SAVE</button>
         </div>
       </div>
@@ -435,26 +443,27 @@ function InputModal({ item, color, onSave, onClose }) {
 }
 
 // ─── WeekCard ─────────────────────────────────────────────────────────────────
-function WeekCard({ item, color, onClick, editMode, onUpdateLabel, onUpdateTarget, onUpdateUnit, onDelete }) {
+function WeekCard({ item, color, onClick, editMode, onUpdateLabel, onUpdateTarget, onUpdateUnit, onDelete, gt, isDark }) {
+  const G = gt || { surface: "#181818", surfaceBorder: "#2a2a2a", taskText: "#bbb", subtext: "#555", dim: "#444", muted: "#383838", progTrack: "#1e1e1e" };
   const hasData = item.actual !== null && item.actual !== undefined;
   const isCheck = item.type === "check";
   const pct = hasData ? Math.min(Math.round((item.actual / item.target) * 100), 100) : 0;
   const hit = hasData && item.actual >= item.target;
-  const dc = hit ? "#00FF88" : color;
+  const dc = hit ? "#22c55e" : color;
 
   if (editMode) {
     return (
-      <div style={{ background: "#181818", borderRadius: 10, padding: "10px 12px", border: "1px solid #2a2a2a", display: "flex", flexDirection: "column", gap: 5 }}>
+      <div style={{ background: G.surface, borderRadius: 10, padding: "10px 12px", border: `1px solid ${G.surfaceBorder}`, display: "flex", flexDirection: "column", gap: 5 }}>
         <InlineEdit value={item.label} onSave={onUpdateLabel} editMode={true}
-          style={{ fontSize: 10, color: "#bbb", display: "block" }} />
+          style={{ fontSize: 10, color: G.taskText, display: "block" }} isDark={isDark} />
         <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 9, color: "#444" }}>target:</span>
+          <span style={{ fontSize: 9, color: G.subtext }}>target:</span>
           <InlineEdit value={item.target} onSave={v => onUpdateTarget(parseFloat(v) || 0)} editMode={true} number
-            style={{ fontSize: 13, color, fontFamily: "'Bebas Neue', cursive" }} />
+            style={{ fontSize: 13, color, fontFamily: "'Bebas Neue', cursive" }} isDark={isDark} />
           <InlineEdit value={item.unit} onSave={onUpdateUnit} editMode={true}
-            style={{ fontSize: 9, color: "#555" }} />
+            style={{ fontSize: 9, color: G.subtext }} isDark={isDark} />
           <button onClick={onDelete}
-            style={{ background: "none", border: "none", color: "#444", fontSize: 16, cursor: "pointer", padding: "0 2px", lineHeight: 1, marginLeft: "auto" }}
+            style={{ background: "none", border: "none", color: G.subtext, fontSize: 16, cursor: "pointer", padding: "0 2px", lineHeight: 1, marginLeft: "auto" }}
             title="Delete">×</button>
         </div>
       </div>
@@ -462,20 +471,20 @@ function WeekCard({ item, color, onClick, editMode, onUpdateLabel, onUpdateTarge
   }
 
   return (
-    <button onClick={onClick} style={{ position: "relative", overflow: "hidden", background: hasData ? color + "08" : "#181818", borderRadius: 10, padding: "10px 12px", border: `1px solid ${hasData ? color + "40" : "#242424"}`, cursor: "pointer", textAlign: "left", width: "100%" }}>
-      {hasData && <div style={{ position: "absolute", inset: 0, width: `${pct}%`, background: `linear-gradient(90deg, ${color}14, transparent)`, pointerEvents: "none" }} />}
+    <button onClick={onClick} style={{ position: "relative", overflow: "hidden", background: hasData ? color + "10" : G.surface, borderRadius: 10, padding: "10px 12px", border: `1px solid ${hasData ? color + "35" : G.surfaceBorder}`, cursor: "pointer", textAlign: "left", width: "100%" }}>
+      {hasData && <div style={{ position: "absolute", inset: 0, width: `${pct}%`, background: `linear-gradient(90deg, ${color}18, transparent)`, pointerEvents: "none" }} />}
       <div style={{ position: "relative" }}>
-        <div style={{ fontSize: 10, color: "#555", marginBottom: 3 }}>{item.label}</div>
+        <div style={{ fontSize: 10, color: G.subtext, marginBottom: 3 }}>{item.label}</div>
         {hasData ? (
           <>
-            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, color: dc, letterSpacing: 1, filter: `drop-shadow(0 0 5px ${dc}55)` }}>
+            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, color: dc, letterSpacing: 1 }}>
               {isCheck ? (item.actual === 1 ? "✓ DONE" : "✗ PENDING") : item.actual}
-              {!isCheck && <span style={{ fontSize: 9, color: "#444", marginLeft: 5 }}>{item.suffix}</span>}
+              {!isCheck && <span style={{ fontSize: 9, color: G.dim, marginLeft: 5 }}>{item.suffix}</span>}
             </div>
-            {!isCheck && <div style={{ marginTop: 5, height: 2, background: "#1e1e1e", borderRadius: 1, overflow: "hidden" }}><div style={{ height: "100%", width: `${pct}%`, background: dc }} /></div>}
+            {!isCheck && <div style={{ marginTop: 5, height: 2, background: G.progTrack, borderRadius: 1, overflow: "hidden" }}><div style={{ height: "100%", width: `${pct}%`, background: dc }} /></div>}
           </>
         ) : (
-          <div style={{ fontSize: 11, color: "#383838" }}>tap to log {item.suffix}</div>
+          <div style={{ fontSize: 11, color: G.muted }}>tap to log {item.suffix}</div>
         )}
       </div>
     </button>
@@ -483,9 +492,11 @@ function WeekCard({ item, color, onClick, editMode, onUpdateLabel, onUpdateTarge
 }
 
 // ─── GoalCard ─────────────────────────────────────────────────────────────────
-function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editMode, onUpdate, onUpdateChecks, onUpdateActuals, onReorder, viewDayOffset }) {
+function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editMode, onUpdate, onUpdateChecks, onUpdateActuals, onReorder, viewDayOffset, gt, isDark }) {
   const s = section;
   const [modal, setModal] = useState(null);
+  const G = gt || { card: "#111", cardBorder: "#1e1e1e", surface: "#181818", surfaceBorder: "#2a2a2a", text: "#fff", subtext: "#555", dim: "#444", muted: "#2a2a2a", rowSep: "#1a1a1a", taskText: "#bbb", emptyCheck: "#3a3a3a", ringTrack: "#1e1e1e", progTrack: "#1a1a1a" };
+
   const dd = Array.isArray(checks) ? checks.filter(Boolean).length : Object.values(checks).filter(Boolean).length;
   const wh = s.weekly.filter((w, i) => { const a = actuals[i]; return a !== null && a !== undefined && a >= w.target; }).length;
   const pct = Math.round(((dd + wh) / Math.max(s.daily.length + s.weekly.length, 1)) * 100);
@@ -493,33 +504,23 @@ function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editM
   const addDailyTask = () => {
     const newItem = { label: "New task", unit: "once", key: `d${Date.now()}` };
     onUpdate(sec => ({ ...sec, daily: [...sec.daily, newItem] }));
-    if (Array.isArray(checks)) {
-      onUpdateChecks([...checks, false]);
-    } else {
-      onUpdateChecks({ ...checks, [newItem.key]: false });
-    }
+    if (Array.isArray(checks)) { onUpdateChecks([...checks, false]); }
+    else { onUpdateChecks({ ...checks, [newItem.key]: false }); }
   };
-
   const deleteDailyTask = (i) => {
     const taskKey = s.daily[i]?.key;
     onUpdate(sec => ({ ...sec, daily: sec.daily.filter((_, j) => j !== i) }));
-    if (Array.isArray(checks)) {
-      onUpdateChecks(checks.filter((_, j) => j !== i));
-    } else {
-      const { [taskKey]: _removed, ...rest } = checks;
-      onUpdateChecks(rest);
-    }
+    if (Array.isArray(checks)) { onUpdateChecks(checks.filter((_, j) => j !== i)); }
+    else { const { [taskKey]: _r, ...rest } = checks; onUpdateChecks(rest); }
   };
-
   const addWeeklyTarget = () => {
     const newItem = { label: "New target", min: 0, max: 10, target: 5, unit: "units", suffix: "/ 5", key: `w${Date.now()}` };
     onUpdate(sec => ({ ...sec, weekly: [...sec.weekly, newItem] }));
     onUpdateActuals([...actuals, null]);
   };
-
   const deleteWeeklyTarget = (i) => {
     if (modal === i) setModal(null);
-    onUpdate(sec => ({ ...sec, weekly: sec.weekly.filter((_, j) => j !== i) }));
+    onUpdate(sec => ({ ...sec, weekly: s.weekly.filter((_, j) => j !== i) }));
     onUpdateActuals(actuals.filter((_, j) => j !== i));
   };
 
@@ -531,98 +532,106 @@ function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editM
           color={s.color}
           onSave={v => { onSave(sectionKey, modal, v); setModal(null); }}
           onClose={() => setModal(null)}
+          isDark={isDark !== undefined ? isDark : true}
         />
       )}
-      <div style={{ background: "#111", border: `1px solid ${s.color}20`, borderRadius: 16, padding: 22, display: "flex", flexDirection: "column", gap: 18, position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: -30, right: -30, width: 130, height: 130, borderRadius: "50%", background: `radial-gradient(circle, ${s.color}07 0%, transparent 70%)`, pointerEvents: "none" }} />
 
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3, flexWrap: "wrap" }}>
-              <ColorSwatch color={s.color} onSave={c => onUpdate(sec => ({ ...sec, color: c }))} editMode={editMode} />
-              <InlineEdit value={s.icon} onSave={v => onUpdate(sec => ({ ...sec, icon: v }))} editMode={editMode}
-                style={{ color: s.color, fontSize: 18 }} />
-              <InlineEdit value={s.label} onSave={v => onUpdate(sec => ({ ...sec, label: v }))} editMode={editMode}
-                style={{ color: s.color, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }} />
-            </div>
-            <InlineEdit value={s.goal} onSave={v => onUpdate(sec => ({ ...sec, goal: v }))} editMode={editMode}
-              style={{ color: "#fff", fontFamily: "'Bebas Neue', cursive", fontSize: 20, letterSpacing: 1 }} />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 12 }}>
-            {editMode && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <button
-                  onClick={() => onReorder(-1)}
-                  style={{ width: 24, height: 24, background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 5, color: "#555", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}
-                  title="Move up"
-                >▲</button>
-                <button
-                  onClick={() => onReorder(1)}
-                  style={{ width: 24, height: 24, background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 5, color: "#555", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, lineHeight: 1 }}
-                  title="Move down"
-                >▼</button>
+      <div style={{
+        background: G.card,
+        borderRadius: 20,
+        border: `1px solid ${G.cardBorder}`,
+        overflow: "hidden",
+        boxShadow: isDark ? "none" : "0 1px 4px rgba(0,0,0,0.07)",
+      }}>
+        {/* Colour accent bar */}
+        <div style={{ height: 3, background: s.color }} />
+
+        <div style={{ padding: "18px 20px 20px" }}>
+          {/* Header */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5, flexWrap: "wrap" }}>
+                <ColorSwatch color={s.color} onSave={c => onUpdate(sec => ({ ...sec, color: c }))} editMode={editMode} />
+                {editMode && (
+                  <div style={{ display: "flex", gap: 3 }}>
+                    <button onClick={() => onReorder(-1)} style={{ width: 20, height: 20, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 4, color: G.subtext, fontSize: 9, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>▲</button>
+                    <button onClick={() => onReorder(1)}  style={{ width: 20, height: 20, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 4, color: G.subtext, fontSize: 9, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>▼</button>
+                  </div>
+                )}
+                <InlineEdit value={s.icon} onSave={v => onUpdate(sec => ({ ...sec, icon: v }))} editMode={editMode}
+                  style={{ color: s.color, fontSize: 16 }} isDark={isDark} />
+                <InlineEdit value={s.label} onSave={v => onUpdate(sec => ({ ...sec, label: v }))} editMode={editMode}
+                  style={{ color: s.color, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", fontWeight: 700 }} isDark={isDark} />
               </div>
-            )}
-            <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Ring pct={pct} color={s.color} size={60} />
-              <span style={{ position: "absolute", fontFamily: "'Bebas Neue', cursive", fontSize: 13, color: "#fff", letterSpacing: 1 }}>{pct}%</span>
+              <InlineEdit value={s.goal} onSave={v => onUpdate(sec => ({ ...sec, goal: v }))} editMode={editMode}
+                style={{ color: G.text, fontSize: 18, fontWeight: 800, fontFamily: "system-ui, -apple-system, sans-serif", letterSpacing: -0.3, lineHeight: 1.2, display: "block" }} isDark={isDark} />
+            </div>
+            <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginLeft: 16 }}>
+              <Ring pct={pct} color={s.color} size={66} gt={G} />
+              <span style={{ position: "absolute", fontSize: 13, fontWeight: 700, color: G.text, fontFamily: "system-ui" }}>{pct}%</span>
             </div>
           </div>
-        </div>
 
-        {/* Daily non-negotiables */}
-        <div style={{ borderTop: "1px solid #1e1e1e", paddingTop: 14 }}>
-          <div style={{ fontSize: 9, color: "#444", letterSpacing: 2, marginBottom: 7 }}>DAILY NON-NEGOTIABLES</div>
-          {s.daily.map((item, i) => (
-            <CheckRow
-              key={item.key}
-              label={item.label}
-              unit={item.unit}
-              done={Array.isArray(checks) ? checks[i] || false : checks[item.key] || false}
-              color={s.color}
-              onToggle={() => onCheck(sectionKey, item.key)}
-              editMode={editMode}
-              onUpdateLabel={v => onUpdate(sec => ({ ...sec, daily: sec.daily.map((d, j) => j === i ? { ...d, label: v } : d) }))}
-              onUpdateUnit={v => onUpdate(sec => ({ ...sec, daily: sec.daily.map((d, j) => j === i ? { ...d, unit: v } : d) }))}
-              onDelete={() => deleteDailyTask(i)}
-            />
-          ))}
-          {editMode && (
-            <button onClick={addDailyTask} style={{ marginTop: 8, width: "100%", padding: "6px 0", background: "#1a1a1a", border: "1px dashed #2a2a2a", borderRadius: 6, color: "#444", fontSize: 10, cursor: "pointer", letterSpacing: 1 }}>
-              + ADD DAILY TASK
-            </button>
-          )}
-        </div>
-
-        {/* Weekly targets */}
-        <div style={{ borderTop: "1px solid #1e1e1e", paddingTop: 14 }}>
-          <div style={{ fontSize: 9, color: "#444", letterSpacing: 2, marginBottom: 10 }}>
-            WEEKLY TARGETS {!editMode && <span style={{ color: "#2a2a2a" }}>· tap to log</span>}
+          {/* Progress bar */}
+          <div style={{ height: 4, background: G.progTrack, borderRadius: 4, overflow: "hidden", marginBottom: 18 }}>
+            <div style={{ height: "100%", width: `${pct}%`, background: pct >= 100 ? "#22c55e" : s.color, borderRadius: 4, transition: "width 0.4s ease" }} />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-            {s.weekly.map((w, i) => (
-              <WeekCard
-                key={w.key || i}
-                item={{ ...w, actual: actuals[i] }}
+
+          {/* Daily */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 9, color: G.subtext, letterSpacing: 2, marginBottom: 4, fontWeight: 600 }}>DAILY NON-NEGOTIABLES</div>
+            {s.daily.map((item, i) => (
+              <CheckRow
+                key={item.key}
+                label={item.label}
+                unit={item.unit}
+                done={Array.isArray(checks) ? checks[i] || false : checks[item.key] || false}
                 color={s.color}
-                onClick={() => !editMode && setModal(i)}
+                onToggle={() => onCheck(sectionKey, item.key)}
                 editMode={editMode}
-                onUpdateLabel={v => onUpdate(sec => ({ ...sec, weekly: sec.weekly.map((w2, j) => j === i ? { ...w2, label: v } : w2) }))}
-                onUpdateTarget={v => onUpdate(sec => ({ ...sec, weekly: sec.weekly.map((w2, j) => j === i ? { ...w2, target: v, max: Math.max(w2.max, v * 2), suffix: `/ ${v}` } : w2) }))}
-                onUpdateUnit={v => onUpdate(sec => ({ ...sec, weekly: sec.weekly.map((w2, j) => j === i ? { ...w2, unit: v } : w2) }))}
-                onDelete={() => deleteWeeklyTarget(i)}
+                onUpdateLabel={v => onUpdate(sec => ({ ...sec, daily: sec.daily.map((d, j) => j === i ? { ...d, label: v } : d) }))}
+                onUpdateUnit={v => onUpdate(sec => ({ ...sec, daily: sec.daily.map((d, j) => j === i ? { ...d, unit: v } : d) }))}
+                onDelete={() => deleteDailyTask(i)}
+                gt={G}
+                isDark={isDark}
               />
             ))}
+            {editMode && (
+              <button onClick={addDailyTask} style={{ marginTop: 8, width: "100%", padding: "7px 0", background: G.surface, border: `1px dashed ${G.surfaceBorder}`, borderRadius: 8, color: G.subtext, fontSize: 10, cursor: "pointer", letterSpacing: 1 }}>
+                + ADD DAILY TASK
+              </button>
+            )}
           </div>
-          {editMode && (
-            <button onClick={addWeeklyTarget} style={{ marginTop: 8, width: "100%", padding: "6px 0", background: "#1a1a1a", border: "1px dashed #2a2a2a", borderRadius: 6, color: "#444", fontSize: 10, cursor: "pointer", letterSpacing: 1 }}>
-              + ADD WEEKLY TARGET
-            </button>
-          )}
-        </div>
 
-        {false && sectionKey === "fatLoss" && <MacroTracker color={s.color} editMode={editMode} viewDayOffset={viewDayOffset} />}
+          {/* Weekly */}
+          <div style={{ borderTop: `1px solid ${G.progTrack}`, paddingTop: 14 }}>
+            <div style={{ fontSize: 9, color: G.subtext, letterSpacing: 2, marginBottom: 10, fontWeight: 600 }}>
+              WEEKLY TARGETS {!editMode && <span style={{ color: G.dim, fontWeight: 400 }}>· tap to log</span>}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {s.weekly.map((w, i) => (
+                <WeekCard
+                  key={w.key || i}
+                  item={{ ...w, actual: actuals[i] }}
+                  color={s.color}
+                  onClick={() => !editMode && setModal(i)}
+                  editMode={editMode}
+                  onUpdateLabel={v => onUpdate(sec => ({ ...sec, weekly: sec.weekly.map((w2, j) => j === i ? { ...w2, label: v } : w2) }))}
+                  onUpdateTarget={v => onUpdate(sec => ({ ...sec, weekly: sec.weekly.map((w2, j) => j === i ? { ...w2, target: v, max: Math.max(w2.max, v * 2), suffix: `/ ${v}` } : w2) }))}
+                  onUpdateUnit={v => onUpdate(sec => ({ ...sec, weekly: sec.weekly.map((w2, j) => j === i ? { ...w2, unit: v } : w2) }))}
+                  onDelete={() => deleteWeeklyTarget(i)}
+                  gt={G}
+                  isDark={isDark}
+                />
+              ))}
+            </div>
+            {editMode && (
+              <button onClick={addWeeklyTarget} style={{ marginTop: 8, width: "100%", padding: "7px 0", background: G.surface, border: `1px dashed ${G.surfaceBorder}`, borderRadius: 8, color: G.subtext, fontSize: 10, cursor: "pointer", letterSpacing: 1 }}>
+                + ADD WEEKLY TARGET
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </>
   );
@@ -733,7 +742,8 @@ function SupabaseInspectorModal({ data, onClose }) {
 }
 
 // ─── DayPicker ────────────────────────────────────────────────────────────────
-function DayPicker({ selectedDay, onSelect }) {
+function DayPicker({ selectedDay, onSelect, gt }) {
+  const G = gt || { card: "#111", surface: "#181818", surfaceBorder: "#2a2a2a", cardBorder: "#1a1a1a", subtext: "#444", taskText: "#bbb" };
   const DAY_NAMES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
   const today = todayStr();
 
@@ -762,7 +772,7 @@ function DayPicker({ selectedDay, onSelect }) {
   };
 
   const navBtn = (label, onClick) => (
-    <button onClick={onClick} style={{ flexShrink: 0, width: 28, height: 44, borderRadius: 8, border: "1px solid #1e1e1e", background: "#111", color: "#555", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+    <button onClick={onClick} style={{ flexShrink: 0, width: 28, height: 44, borderRadius: 8, border: `1px solid ${G.surfaceBorder}`, background: G.card, color: G.subtext, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
       {label}
     </button>
   );
@@ -776,12 +786,12 @@ function DayPicker({ selectedDay, onSelect }) {
           const isToday = day === today;
           const isSel = day === selectedDay;
           const isFuture = day > today;
-          const selColor = isFuture ? "#00D4FF" : "#00FF88";
+          const selColor = isFuture ? "#00D4FF" : "#22c55e";
           return (
-            <button key={day} onClick={() => onSelect(day)} style={{ flexShrink: 0, flex: 1, minWidth: 40, padding: "8px 0", borderRadius: 10, border: `1px solid ${isSel ? selColor : isToday ? "#2a2a2a" : "#1a1a1a"}`, background: isSel ? selColor + "12" : isToday ? "#181818" : "#111", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-              <span style={{ fontSize: 8, color: isSel ? selColor : isFuture ? "#2a4a55" : "#444", letterSpacing: 1 }}>{DAY_NAMES[d.getDay()]}</span>
-              <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: isSel ? selColor : isToday ? "#bbb" : isFuture ? "#334" : "#444", letterSpacing: 1, lineHeight: 1, filter: isSel ? `drop-shadow(0 0 5px ${selColor}88)` : "none" }}>{d.getDate()}</span>
-              {isToday && !isSel && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#333" }} />}
+            <button key={day} onClick={() => onSelect(day)} style={{ flexShrink: 0, flex: 1, minWidth: 40, padding: "8px 0", borderRadius: 10, border: `1px solid ${isSel ? selColor : isToday ? G.surfaceBorder : G.cardBorder}`, background: isSel ? selColor + "12" : isToday ? G.surface : G.card, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+              <span style={{ fontSize: 8, color: isSel ? selColor : isFuture ? "#2a4a55" : G.subtext, letterSpacing: 1 }}>{DAY_NAMES[d.getDay()]}</span>
+              <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: isSel ? selColor : isToday ? G.taskText : isFuture ? "#334" : G.subtext, letterSpacing: 1, lineHeight: 1, filter: isSel ? `drop-shadow(0 0 5px ${selColor}88)` : "none" }}>{d.getDate()}</span>
+              {isToday && !isSel && <span style={{ width: 4, height: 4, borderRadius: "50%", background: G.surfaceBorder }} />}
               {isFuture && !isSel && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#1a2a33" }} />}
             </button>
           );
@@ -1152,6 +1162,38 @@ export default function App() {
     rightText: "#aaa", accent: "#2563eb",
   };
 
+  const gt = isDark ? {
+    bg:            "#0a0a0a",
+    card:          "#111",
+    cardBorder:    "#1e1e1e",
+    surface:       "#181818",
+    surfaceBorder: "#2a2a2a",
+    text:          "#fff",
+    subtext:       "#555",
+    dim:           "#444",
+    muted:         "#2a2a2a",
+    rowSep:        "#1a1a1a",
+    taskText:      "#bbb",
+    emptyCheck:    "#3a3a3a",
+    ringTrack:     "#1e1e1e",
+    progTrack:     "#1a1a1a",
+  } : {
+    bg:            "#f2f1ed",
+    card:          "#fff",
+    cardBorder:    "#e5e5e5",
+    surface:       "#f5f5f3",
+    surfaceBorder: "#e8e8e8",
+    text:          "#1a1a1a",
+    subtext:       "#888",
+    dim:           "#bbb",
+    muted:         "#ddd",
+    rowSep:        "#f0f0f0",
+    taskText:      "#444",
+    emptyCheck:    "#ddd",
+    ringTrack:     "#e8e8e8",
+    progTrack:     "#e8e8e8",
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", background: isDark ? "#0a0a0a" : "#f2f1ed", color: isDark ? "#fff" : "#1a1a1a", fontFamily: "'DM Mono', monospace" }}>
@@ -1314,13 +1356,13 @@ export default function App() {
         {["Q1", "Q2", "Q3", "Q4"].map((q, i) => {
           const active = i + 1 === currentQ;
           return (
-            <div key={q} style={{ flex: 1, background: active ? "#00FF8810" : "#111", border: `1px solid ${active ? "#00FF8838" : "#1a1a1a"}`, borderRadius: 8, padding: "8px 10px" }}>
+            <div key={q} style={{ flex: 1, background: active ? "#22c55e10" : gt.card, border: `1px solid ${active ? "#22c55e38" : gt.cardBorder}`, borderRadius: 8, padding: "8px 10px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 16, color: active ? "#00FF88" : "#333", letterSpacing: 1 }}>{q}</span>
-                {i + 1 < currentQ && <span style={{ color: "#00FF88", fontSize: 10 }}>✓</span>}
-                {active && <span style={{ color: "#00FF88", fontSize: 8, letterSpacing: 1 }}>NOW</span>}
+                <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 16, color: active ? "#22c55e" : gt.subtext, letterSpacing: 1 }}>{q}</span>
+                {i + 1 < currentQ && <span style={{ color: "#22c55e", fontSize: 10 }}>✓</span>}
+                {active && <span style={{ color: "#22c55e", fontSize: 8, letterSpacing: 1 }}>NOW</span>}
               </div>
-              <div style={{ fontSize: 9, color: active ? "#777" : "#2a2a2a", marginTop: 1, lineHeight: 1.3 }}>{Q_THEMES[i]}</div>
+              <div style={{ fontSize: 9, color: active ? gt.subtext : gt.dim, marginTop: 1, lineHeight: 1.3 }}>{Q_THEMES[i]}</div>
             </div>
           );
         })}
@@ -1328,15 +1370,15 @@ export default function App() {
 
       {/* Year progress bar */}
       <div style={{ padding: "10px 20px 0", display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 8, color: "#333", letterSpacing: 2, flexShrink: 0 }}>WK {weekNum}/52</span>
-        <div style={{ flex: 1, height: 3, background: "#1a1a1a", borderRadius: 2, overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${(weekNum / 52) * 100}%`, background: "linear-gradient(90deg, #00FF88, #A78BFA)", borderRadius: 2 }} />
+        <span style={{ fontSize: 8, color: gt.dim, letterSpacing: 2, flexShrink: 0 }}>WK {weekNum}/52</span>
+        <div style={{ flex: 1, height: 3, background: gt.progTrack, borderRadius: 2, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${(weekNum / 52) * 100}%`, background: "linear-gradient(90deg, #22c55e, #A78BFA)", borderRadius: 2 }} />
         </div>
-        <span style={{ fontSize: 8, color: "#333", letterSpacing: 1, flexShrink: 0 }}>{Math.round((weekNum / 52) * 100)}%</span>
+        <span style={{ fontSize: 8, color: gt.dim, letterSpacing: 1, flexShrink: 0 }}>{Math.round((weekNum / 52) * 100)}%</span>
       </div>
 
       {/* Day picker */}
-      <DayPicker selectedDay={selectedDay} onSelect={setSelectedDay} />
+      <DayPicker selectedDay={selectedDay} onSelect={setSelectedDay} gt={gt} />
 
       {/* Past-day / future-day banner */}
       {selectedDay !== todayStr() && (() => {
@@ -1381,29 +1423,33 @@ export default function App() {
             onUpdateActuals={(newArr) => handleUpdateActuals(key, newArr)}
             onReorder={(dir) => handleReorderSection(key, dir)}
             viewDayOffset={Math.round((new Date(selectedDay + "T00:00:00") - new Date(todayStr() + "T00:00:00")) / 86400000)}
+            gt={gt}
+            isDark={isDark}
           />
         ))}
       </div>
 
       {/* Schedule */}
       <div style={{ padding: "0 20px 24px" }}>
-        <div style={{ borderTop: "1px solid #1a1a1a", paddingTop: 18, marginBottom: 12 }}>
-          <span style={{ fontSize: 9, color: "#444", letterSpacing: 2 }}>WEEKLY SCHEDULE TEMPLATE</span>
+        <div style={{ borderTop: `1px solid ${gt.cardBorder}`, paddingTop: 18, marginBottom: 12 }}>
+          <span style={{ fontSize: 9, color: gt.dim, letterSpacing: 2 }}>WEEKLY SCHEDULE TEMPLATE</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
           {sched.map((day, di) => (
-            <div key={di} style={{ background: "#111", border: `1px solid ${day.color}20`, borderRadius: 12, padding: 16 }}>
+            <div key={di} style={{ background: gt.card, border: `1px solid ${gt.cardBorder}`, borderRadius: 12, padding: 16 }}>
               <InlineEdit
                 value={day.label}
                 onSave={v => updateSched(s => s.map((d, i) => i === di ? { ...d, label: v } : d))}
                 editMode={editMode}
+                isDark={isDark}
                 style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, color: day.color, letterSpacing: 2, display: "block", marginBottom: 2 }}
               />
               <InlineEdit
                 value={day.sub}
                 onSave={v => updateSched(s => s.map((d, i) => i === di ? { ...d, sub: v } : d))}
                 editMode={editMode}
-                style={{ fontSize: 9, color: "#444", letterSpacing: 1, marginBottom: 10, display: "block" }}
+                isDark={isDark}
+                style={{ fontSize: 9, color: gt.subtext, letterSpacing: 1, marginBottom: 10, display: "block" }}
               />
               {day.blocks.map((b, bi) => (
                 <div key={bi} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "flex-start" }}>
@@ -1412,12 +1458,13 @@ export default function App() {
                     value={b}
                     onSave={v => updateSched(s => s.map((d, i) => i === di ? { ...d, blocks: d.blocks.map((bl, j) => j === bi ? v : bl) } : d))}
                     editMode={editMode}
-                    style={{ fontSize: 11, color: "#777", lineHeight: 1.5 }}
+                    isDark={isDark}
+                    style={{ fontSize: 11, color: gt.taskText, lineHeight: 1.5 }}
                   />
                   {editMode && (
                     <button
                       onClick={() => updateSched(s => s.map((d, i) => i === di ? { ...d, blocks: d.blocks.filter((_, j) => j !== bi) } : d))}
-                      style={{ background: "none", border: "none", color: "#333", fontSize: 14, cursor: "pointer", padding: "0 2px", flexShrink: 0, lineHeight: 1, marginTop: 1 }}
+                      style={{ background: "none", border: "none", color: gt.dim, fontSize: 14, cursor: "pointer", padding: "0 2px", flexShrink: 0, lineHeight: 1, marginTop: 1 }}
                       title="Delete block">×</button>
                   )}
                 </div>
@@ -1425,7 +1472,7 @@ export default function App() {
               {editMode && (
                 <button
                   onClick={() => updateSched(s => s.map((d, i) => i === di ? { ...d, blocks: [...d.blocks, "New block"] } : d))}
-                  style={{ marginTop: 6, width: "100%", padding: "5px 0", background: "#1a1a1a", border: "1px dashed #2a2a2a", borderRadius: 5, color: "#444", fontSize: 9, cursor: "pointer", letterSpacing: 1 }}
+                  style={{ marginTop: 6, width: "100%", padding: "5px 0", background: gt.surface, border: `1px dashed ${gt.surfaceBorder}`, borderRadius: 5, color: gt.subtext, fontSize: 9, cursor: "pointer", letterSpacing: 1 }}
                 >
                   + ADD BLOCK
                 </button>
@@ -1436,13 +1483,13 @@ export default function App() {
       </div>
 
       {/* Footer */}
-      <div style={{ borderTop: "1px solid #1a1a1a", padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <span style={{ fontSize: 9, color: "#222", letterSpacing: 1 }}>YEAR ZERO · INPUT-BASED SYSTEM · DATA SAVED LOCALLY</span>
+      <div style={{ borderTop: `1px solid ${gt.cardBorder}`, padding: "12px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <span style={{ fontSize: 9, color: gt.dim, letterSpacing: 1 }}>YEAR ZERO · INPUT-BASED SYSTEM · DATA SAVED LOCALLY</span>
         <div style={{ display: "flex", gap: 14 }}>
           {Object.values(sections).map(s => (
             <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <span style={{ color: s.color, fontSize: 9 }}>{s.icon}</span>
-              <span style={{ fontSize: 9, color: "#333" }}>{s.label}</span>
+              <span style={{ fontSize: 9, color: gt.subtext }}>{s.label}</span>
             </div>
           ))}
         </div>
