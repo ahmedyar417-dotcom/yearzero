@@ -67,9 +67,9 @@ export default async function handler(req, res) {
     const base = 'https://api.prod.whoop.com/developer';
 
     const [recoveryRes, cycleRes, sleepRes] = await Promise.all([
-      fetch(`${base}/v2/recovery?limit=50`, { headers }),
-      fetch(`${base}/v2/cycle?limit=50`, { headers }),
-      fetch(`${base}/v2/activity/sleep?limit=120`, { headers }),
+      fetch(`${base}/v2/recovery?limit=90`, { headers }),
+      fetch(`${base}/v2/cycle?limit=90`, { headers }),
+      fetch(`${base}/v2/activity/sleep?limit=180`, { headers }),
     ]);
 
     const [recoveryData, cycleData, sleepData] = await Promise.all([

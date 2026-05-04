@@ -17,7 +17,7 @@ export default async function handler(req, res) {
 
   try {
     const r = await fetch(
-      `${sbUrl}/rest/v1/yz_data?user_id=eq.${userId}&key=like.yz-health-%&select=key,value&limit=120`,
+      `${sbUrl}/rest/v1/yz_data?user_id=eq.${userId}&key=like.yz-health-%&select=key,value&limit=200`,
       { headers: { Authorization: `Bearer ${sbKey}`, apikey: sbKey } }
     );
     const rows = await r.json();
@@ -37,6 +37,7 @@ export default async function handler(req, res) {
           protein_g: apple?.protein_g ?? null,
           carbs_g: apple?.carbs_g ?? null,
           fat_g: apple?.fat_g ?? null,
+          distance_mi: apple?.distance_mi ?? null,
         };
       })
       .filter(Boolean)

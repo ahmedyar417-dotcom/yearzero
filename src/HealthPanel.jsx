@@ -1,7 +1,33 @@
 import { useState, useEffect, useMemo } from "react";
 
 const FONT = '"Inter", system-ui, -apple-system, sans-serif';
-const CHART_DAYS = 14;
+
+/** Current calendar month (trends reset each month automatically). */
+function monthContext(d = new Date()) {
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const label = new Date(y, m - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+  return { year: y, month: m, label };
+}
+
+function filterWhoopMonth(days, year, month1) {
+  if (!days?.length) return [];
+  return days.filter((row) => {
+    if (!row.cycleEndDate) return false;
+    const parts = row.cycleEndDate.split("-").map(Number);
+    const yy = parts[0];
+    const mm = parts[1];
+    return yy === year && mm === month1;
+  });
+}
+
+function filterAppleMonth(points, year, month1) {
+  if (!points?.length) return [];
+  return points.filter((p) => {
+    const parts = p.date.split("-").map(Number);
+    return parts[0] === year && parts[1] === month1;
+  });
+}
 
 const msToHm = (ms) => {
   if (ms == null || ms === 0) return "—";
@@ -126,10 +152,21 @@ function DataChart({ datasets, legend, legendMuted = "#737373", w = 168, h = 58,
     norm: normalizeY(ds.values),
   }));
 
+  const n = normalized[0]?.norm?.length ?? 0;
+  const iw = w - pad.left - pad.right;
+  const ih = h - pad.top - pad.bottom;
+
   return (
     <div style={{ flexShrink: 0 }}>
       <svg width={w} height={h} style={{ display: "block", overflow: "visible" }}>
         {normalized.map((ds, idx) => {
+          const valid = (ds.norm || []).filter((v) => v != null);
+          if (valid.length === 1) {
+            const i = ds.norm.findIndex((v) => v != null);
+            const x = n <= 1 ? pad.left + iw / 2 : pad.left + (i / Math.max(1, n - 1)) * iw;
+            const y = pad.top + (1 - ds.norm[i]) * ih;
+            return <circle key={idx} cx={x} cy={y} r={3} fill={ds.color} opacity={0.95} />;
+          }
           const d = smoothPath(ds.norm, w, h, pad);
           if (!d) return null;
           return (
@@ -166,12 +203,32 @@ function DataChart({ datasets, legend, legendMuted = "#737373", w = 168, h = 58,
 /** Weight + dashed linear trend (same Y scale as weight). */
 function BodyWeightChart({ weights, w = 168, h = 58 }) {
   const pad = { top: 5, bottom: 4, left: 2, right: 2 };
-  const trendRaw = linearTrend(weights);
+  const iw = w - pad.left - pad.right;
+  const ih = h - pad.top - pad.bottom;
+  const n = weights.length;
   const vals = weights.filter((y) => y != null && !Number.isNaN(y));
   const min = vals.length ? Math.min(...vals) : 0;
   const max = vals.length ? Math.max(...vals) : 1;
   const span = max - min || 1;
   const normW = weights.map((y) => (y == null || Number.isNaN(y) ? null : (y - min) / span));
+
+  if (vals.length === 1) {
+    const i = normW.findIndex((v) => v != null);
+    const x = n <= 1 ? pad.left + iw / 2 : pad.left + (i / Math.max(1, n - 1)) * iw;
+    const y = pad.top + (1 - normW[i]) * ih;
+    return (
+      <div style={{ flexShrink: 0 }}>
+        <svg width={w} height={h} style={{ display: "block", overflow: "visible" }}>
+          <circle cx={x} cy={y} r={3} fill="#38bdf8" opacity={0.95} />
+        </svg>
+        <div style={{ display: "flex", gap: 10, marginTop: 6, justifyContent: "flex-end" }}>
+          <span style={{ fontSize: 7, color: "#737373", fontWeight: 500 }}>WEIGHT (month)</span>
+        </div>
+      </div>
+    );
+  }
+
+  const trendRaw = linearTrend(weights);
   const normT = trendRaw.map((y) => (y == null || Number.isNaN(y) ? null : (y - min) / span));
   const dW = smoothPath(normW, w, h, pad);
   const dT = smoothPath(normT, w, h, pad);
@@ -180,7 +237,7 @@ function BodyWeightChart({ weights, w = 168, h = 58 }) {
     <div style={{ flexShrink: 0 }}>
       <svg width={w} height={h} style={{ display: "block", overflow: "visible" }}>
         {dW && <path d={dW} fill="none" stroke="#38bdf8" strokeWidth={1.75} strokeLinecap="round" opacity={0.95} />}
-        {dT && (
+        {dT && vals.length >= 2 && (
           <path d={dT} fill="none" stroke="#737373" strokeWidth={1.35} strokeDasharray="5 4" strokeLinecap="round" opacity={0.85} />
         )}
       </svg>
@@ -199,6 +256,60 @@ function BodyWeightChart({ weights, w = 168, h = 58 }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function MonthEmpty({ message }) {
+  return (
+    <div
+      style={{
+        width: 172,
+        height: 58,
+        flexShrink: 0,
+        border: "1px dashed #3f3f3f",
+        borderRadius: 8,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "0 10px",
+        textAlign: "center",
+        fontSize: 8,
+        color: "#525252",
+        fontFamily: FONT,
+        lineHeight: 1.35,
+      }}
+    >
+      {message}
+    </div>
+  );
+}
+
+function MiniSparkline({ values, color = "#737373" }) {
+  const w = 56,
+    h = 24,
+    pad = { top: 4, bottom: 4, left: 2, right: 2 };
+  const arr = values || [];
+  const norm = normalizeY(arr);
+  const valid = arr.filter((x) => x != null && !Number.isNaN(x));
+  if (!valid.length) {
+    return <div style={{ width: w, height: h, flexShrink: 0 }} />;
+  }
+  if (valid.length === 1) {
+    const nv = norm.find((x) => x != null);
+    const x = w / 2;
+    const y = pad.top + (1 - nv) * (h - pad.top - pad.bottom);
+    return (
+      <svg width={w} height={h} style={{ flexShrink: 0, opacity: 0.95 }}>
+        <circle cx={x} cy={y} r={2.5} fill={color} />
+      </svg>
+    );
+  }
+  const d = smoothPath(norm, w, h, pad);
+  if (!d) return <div style={{ width: w, height: h, flexShrink: 0 }} />;
+  return (
+    <svg width={w} height={h} style={{ flexShrink: 0, opacity: 0.95 }}>
+      <path d={d} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -306,13 +417,17 @@ function HeroCard({ label, value, lines = [], gradient }) {
   );
 }
 
-function Metric({ label, value, color, muted, valueDefault = "#e5e7eb" }) {
+function Metric({ label, value, color, muted, valueDefault = "#e5e7eb", spark, sparkColor }) {
+  const lineColor = sparkColor || color || "#737373";
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <span style={{ fontSize: 8, color: muted || "#737373", letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 600, fontFamily: FONT }}>
-        {label}
-      </span>
-      <span style={{ fontSize: 14, fontWeight: 600, color: color ?? valueDefault, fontFamily: FONT }}>{value}</span>
+    <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 6, minWidth: 0 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: 1 }}>
+        <span style={{ fontSize: 8, color: muted || "#737373", letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 600, fontFamily: FONT }}>
+          {label}
+        </span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: color ?? valueDefault, fontFamily: FONT, lineHeight: 1.2 }}>{value}</span>
+      </div>
+      <MiniSparkline values={spark} color={lineColor} />
     </div>
   );
 }
@@ -362,8 +477,17 @@ function Panel({ title, main, mainSub, mainColor, metrics, chart, iconColor = "#
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "11px 14px", paddingTop: 12, marginTop: "auto", borderTop: `1px solid ${dividerColor || "#2a2a2a"}` }}>
-        {metrics.map(({ label, value, color }, idx) => (
-          <Metric key={`${title}-${idx}-${label}`} label={label} value={value} color={color} muted={metricMuted} valueDefault={valueDefault} />
+        {metrics.map(({ label, value, color, spark, sparkColor }, idx) => (
+          <Metric
+            key={`${title}-${idx}-${label}`}
+            label={label}
+            value={value}
+            color={color}
+            muted={metricMuted}
+            valueDefault={valueDefault}
+            spark={spark}
+            sparkColor={sparkColor}
+          />
         ))}
       </div>
     </div>
@@ -372,11 +496,6 @@ function Panel({ title, main, mainSub, mainColor, metrics, chart, iconColor = "#
 
 const CAL_GOAL = 1900;
 const PROTEIN_GOAL_G = 180;
-
-function trimSeries(arr, n = CHART_DAYS) {
-  if (!arr?.length) return [];
-  return arr.slice(-n);
-}
 
 function mergeAppleSteps(whoopDays, applePoints) {
   const byDate = new Map((applePoints || []).map((p) => [p.date, p]));
@@ -468,16 +587,26 @@ export default function HealthPanel({ darkMode = true }) {
   const w = data?.whoop;
   const a = data?.apple;
 
-  const days = trimSeries(series?.days || []);
+  const allWhoop = series?.days || [];
   const applePoints = appleHist?.points || [];
 
+  const cy = new Date().getFullYear();
+  const cm = new Date().getMonth() + 1;
+  const monthTitle = new Date(cy, cm - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+
+  const monthWhoop = useMemo(() => filterWhoopMonth(allWhoop, cy, cm), [allWhoop, cy, cm]);
+  const monthApple = useMemo(() => filterAppleMonth(applePoints, cy, cm), [applePoints, cy, cm]);
+
   const chartSlice = useMemo(() => {
-    const d = trimSeries(series?.days || []);
+    const d = monthWhoop;
     const stepsAligned = mergeAppleSteps(d, applePoints);
     const weightsAligned = d.map((row) => {
       const hit = applePoints.find((p) => p.date === row.cycleEndDate);
       return hit?.weight_lb ?? null;
     });
+
+    const sortedAppleMonth = [...monthApple].sort((a, b) => a.date.localeCompare(b.date));
+    const monthWeights = sortedAppleMonth.map((p) => p.weight_lb ?? null);
 
     const recoveryChart = {
       datasets: [
@@ -535,10 +664,12 @@ export default function HealthPanel({ darkMode = true }) {
       activityChart,
       weightsAligned,
       stepsAligned,
+      monthWeights,
+      sortedAppleMonth,
     };
-  }, [series, appleHist]);
+  }, [monthWhoop, monthApple, applePoints]);
 
-  const latest = days[days.length - 1] || {};
+  const latest = allWhoop[allWhoop.length - 1] || {};
   const summary = series?.summary || {};
 
   const recScore = w?.recovery?.score ?? latest.recoveryScore;
@@ -640,27 +771,46 @@ export default function HealthPanel({ darkMode = true }) {
 
   const needDisplay = sleepNeedMs != null ? msToHm(sleepNeedMs) : msToHm(8 * 3600000 + 38 * 60000);
 
-  const recoveryChartEl =
-    days.length >= 2 ? (
-      <DataChart {...chartSlice.recoveryChart} legendMuted={theme.sparkLegend} w={172} h={58} />
-    ) : (
-      <div style={{ width: 172, height: 58, flexShrink: 0 }} />
-    );
+  const hasWhoopMonth = monthWhoop.length > 0;
 
-  const pulseChartEl = days.length >= 2 ? <DataChart {...chartSlice.pulseChart} legendMuted={theme.sparkLegend} w={172} h={58} /> : <div style={{ width: 172, height: 58 }} />;
+  const recoveryChartEl = hasWhoopMonth ? (
+    <DataChart {...chartSlice.recoveryChart} legendMuted={theme.sparkLegend} w={172} h={58} />
+  ) : (
+    <MonthEmpty message={`No WHOOP cycles dated in ${monthTitle} yet. Sync to load this month.`} />
+  );
 
-  const sleepChartEl = days.length >= 2 ? <DataChart {...chartSlice.sleepChart} legendMuted={theme.sparkLegend} w={172} h={58} /> : <div style={{ width: 172, height: 58 }} />;
+  const pulseChartEl = hasWhoopMonth ? (
+    <DataChart {...chartSlice.pulseChart} legendMuted={theme.sparkLegend} w={172} h={58} />
+  ) : (
+    <MonthEmpty message={`No WHOOP cycles dated in ${monthTitle} yet.`} />
+  );
 
-  const activityChartEl =
-    days.length >= 2 ? <DataChart {...chartSlice.activityChart} legendMuted={theme.sparkLegend} w={172} h={58} /> : <div style={{ width: 172, height: 58 }} />;
+  const sleepChartEl = hasWhoopMonth ? (
+    <DataChart {...chartSlice.sleepChart} legendMuted={theme.sparkLegend} w={172} h={58} />
+  ) : (
+    <MonthEmpty message={`No WHOOP cycles dated in ${monthTitle} yet.`} />
+  );
 
-  const bodyWeights = trimSeries(chartSlice.weightsAligned || []);
+  const activityChartEl = hasWhoopMonth ? (
+    <DataChart {...chartSlice.activityChart} legendMuted={theme.sparkLegend} w={172} h={58} />
+  ) : (
+    <MonthEmpty message={`No WHOOP cycles dated in ${monthTitle} yet.`} />
+  );
+
+  const mw = chartSlice.monthWeights || [];
   const bodyChartEl =
-    bodyWeights.filter((x) => x != null).length >= 2 ? (
-      <BodyWeightChart weights={bodyWeights} w={172} h={58} />
+    mw.filter((x) => x != null).length >= 1 ? (
+      <BodyWeightChart weights={mw} w={172} h={58} />
     ) : (
-      <div style={{ width: 172, height: 58 }} />
+      <MonthEmpty message={`No Apple weight logs in ${monthTitle}. Run your Shortcut on gym days.`} />
     );
+
+  const sortedNut = [...monthApple].sort((a, b) => a.date.localeCompare(b.date));
+  const nutCal = sortedNut.map((p) => p.calories ?? null);
+  const nutProtLeft = sortedNut.map((p) => (p.protein_g != null ? Math.max(0, PROTEIN_GOAL_G - p.protein_g) : null));
+  const nutCarbs = sortedNut.map((p) => p.carbs_g ?? null);
+  const nutFat = sortedNut.map((p) => p.fat_g ?? null);
+  const nutCalLeft = sortedNut.map((p) => (p.calories != null ? Math.max(0, CAL_GOAL - p.calories) : null));
 
   const bodyMainSub =
     paceLbPerWk != null && Number.isFinite(paceLbPerWk)
@@ -693,6 +843,9 @@ export default function HealthPanel({ darkMode = true }) {
         <div>
           <div style={{ fontSize: 9, color: "#525252", letterSpacing: 3.2, fontWeight: 700 }}>HEALTH</div>
           <div style={{ fontSize: 9, color: theme.headerSub, letterSpacing: 0.5, marginTop: 5, fontWeight: 400 }}>
+            Trends · {monthTitle} · cycles dated this month
+          </div>
+          <div style={{ fontSize: 9, color: "#3f3f3f", letterSpacing: 0.4, marginTop: 4, fontWeight: 400 }}>
             {whoopTime ? `WHOOP ${whoopTime}` : "WHOOP NOT SYNCED"}
             {appleTime ? ` · APPLE ${appleTime}` : " · APPLE NOT SYNCED"}
           </div>
@@ -760,10 +913,16 @@ export default function HealthPanel({ darkMode = true }) {
           iconColor="#c084fc"
           chart={recoveryChartEl}
           metrics={[
-            { label: "RHR", value: fmt(w?.recovery?.rhr ?? latest.rhr, " bpm") },
-            { label: "HRV", value: fmt(w?.recovery?.hrv ?? latest.hrv, " ms"), color: "#c084fc" },
-            { label: "SpO2", value: fmt(w?.recovery?.spo2 ?? latest.spo2, "%", 1) },
-            { label: "Need", value: needDisplay, color: "#a3a3a3" },
+            { label: "RHR", value: fmt(w?.recovery?.rhr ?? latest.rhr, " bpm"), spark: monthWhoop.map((x) => x.rhr), sparkColor: "#60a5fa" },
+            { label: "HRV", value: fmt(w?.recovery?.hrv ?? latest.hrv, " ms"), color: "#c084fc", spark: monthWhoop.map((x) => x.hrv), sparkColor: "#c084fc" },
+            { label: "SpO2", value: fmt(w?.recovery?.spo2 ?? latest.spo2, "%", 1), spark: monthWhoop.map((x) => x.spo2), sparkColor: "#4ade80" },
+            {
+              label: "Need",
+              value: needDisplay,
+              color: "#a3a3a3",
+              spark: monthWhoop.map((x) => (x.sleepNeedMs != null ? x.sleepNeedMs / 3600000 : null)),
+              sparkColor: "#a3a3a3",
+            },
           ]}
         />
 
@@ -776,10 +935,15 @@ export default function HealthPanel({ darkMode = true }) {
           iconColor="#2dd4bf"
           chart={pulseChartEl}
           metrics={[
-            { label: "Cycle avg", value: fmt(w?.avgHr ?? latest.avgHr, " bpm") },
-            { label: "Resp", value: respRate != null ? `${respRate.toFixed(1)}/min` : "—" },
-            { label: "SpO2", value: fmt(w?.recovery?.spo2 ?? latest.spo2, "%", 1) },
-            { label: "Workout max", value: fmt(w?.maxHr ?? latest.maxHr, " bpm"), color: "#fb923c" },
+            { label: "Cycle avg", value: fmt(w?.avgHr ?? latest.avgHr, " bpm"), spark: monthWhoop.map((x) => x.avgHr), sparkColor: "#2dd4bf" },
+            {
+              label: "Resp",
+              value: respRate != null ? `${respRate.toFixed(1)}/min` : "—",
+              spark: monthWhoop.map((x) => x.respiratoryRate),
+              sparkColor: "#2dd4bf",
+            },
+            { label: "SpO2", value: fmt(w?.recovery?.spo2 ?? latest.spo2, "%", 1), spark: monthWhoop.map((x) => x.spo2), sparkColor: "#4ade80" },
+            { label: "Workout max", value: fmt(w?.maxHr ?? latest.maxHr, " bpm"), color: "#fb923c", spark: monthWhoop.map((x) => x.maxHr), sparkColor: "#fb923c" },
           ]}
         />
 
@@ -792,10 +956,34 @@ export default function HealthPanel({ darkMode = true }) {
           iconColor="#818cf8"
           chart={sleepChartEl}
           metrics={[
-            { label: "Deep", value: msToHm(w?.sleep?.deepMs ?? latest.deepMs), color: "#3b82f6" },
-            { label: "REM", value: msToHm(w?.sleep?.remMs ?? latest.remMs), color: "#a78bfa" },
-            { label: "Eff", value: fmt(w?.sleep?.efficiency ?? latest.sleepEfficiency, "%"), color: (w?.sleep?.efficiency ?? latest.sleepEfficiency) >= 85 ? "#4ade80" : "#facc15" },
-            { label: "Debt", value: msToHm(w?.sleep?.debtMs ?? latest.sleepDebtMs), color: (w?.sleep?.debtMs ?? latest.sleepDebtMs) > 0 ? "#fb923c" : "#4ade80" },
+            {
+              label: "Deep",
+              value: msToHm(w?.sleep?.deepMs ?? latest.deepMs),
+              color: "#3b82f6",
+              spark: monthWhoop.map((x) => (x.deepMs != null ? x.deepMs / 3600000 : null)),
+              sparkColor: "#3b82f6",
+            },
+            {
+              label: "REM",
+              value: msToHm(w?.sleep?.remMs ?? latest.remMs),
+              color: "#a78bfa",
+              spark: monthWhoop.map((x) => (x.remMs != null ? x.remMs / 3600000 : null)),
+              sparkColor: "#a78bfa",
+            },
+            {
+              label: "Eff",
+              value: fmt(w?.sleep?.efficiency ?? latest.sleepEfficiency, "%"),
+              color: (w?.sleep?.efficiency ?? latest.sleepEfficiency) >= 85 ? "#4ade80" : "#facc15",
+              spark: monthWhoop.map((x) => x.sleepEfficiency),
+              sparkColor: "#facc15",
+            },
+            {
+              label: "Debt",
+              value: msToHm(w?.sleep?.debtMs ?? latest.sleepDebtMs),
+              color: (w?.sleep?.debtMs ?? latest.sleepDebtMs) > 0 ? "#fb923c" : "#4ade80",
+              spark: monthWhoop.map((x) => (x.sleepDebtMs != null ? x.sleepDebtMs / 3600000 : null)),
+              sparkColor: "#fb923c",
+            },
           ]}
         />
 
@@ -808,9 +996,26 @@ export default function HealthPanel({ darkMode = true }) {
           iconColor="#38bdf8"
           chart={bodyChartEl}
           metrics={[
-            { label: "BF est", value: fmt(bf, "%", 1) },
-            { label: "Lost", value: lostLb != null ? `${lostLb.toFixed(1)} lb` : "—", color: "#4ade80" },
-            { label: "Progress", value: progressPct != null ? `${progressPct}%` : "—", color: "#38bdf8" },
+            {
+              label: "BF est",
+              value: fmt(bf, "%", 1),
+              spark: [...monthApple].sort((a, b) => a.date.localeCompare(b.date)).map((p) => p.body_fat_pct ?? null),
+              sparkColor: "#facc15",
+            },
+            {
+              label: "Lost",
+              value: lostLb != null ? `${lostLb.toFixed(1)} lb` : "—",
+              color: "#4ade80",
+              spark: chartSlice.monthWeights,
+              sparkColor: "#4ade80",
+            },
+            {
+              label: "Progress",
+              value: progressPct != null ? `${progressPct}%` : "—",
+              color: "#38bdf8",
+              spark: chartSlice.monthWeights,
+              sparkColor: "#38bdf8",
+            },
             { label: "DEXA Δ", value: a?.dexa_delta_pct != null ? `${fmt(a.dexa_delta_pct, "%", 1)}` : "—", color: "#a3a3a3" },
           ]}
         />
@@ -830,10 +1035,27 @@ export default function HealthPanel({ darkMode = true }) {
           iconColor="#fb923c"
           chart={activityChartEl}
           metrics={[
-            { label: "Steps", value: a?.steps != null ? Math.round(a.steps).toLocaleString() : "—", color: "#4ade80" },
-            { label: "Energy", value: a?.active_energy_kcal != null ? `${Math.round(a.active_energy_kcal)} kcal` : latest.energyKcal != null ? `${latest.energyKcal} kcal` : "—", color: "#38bdf8" },
-            { label: "7D strain", value: strain7d, color: "#c084fc" },
-            { label: "Walk", value: fmt(a?.distance_mi, " mi", 1) },
+            {
+              label: "Steps",
+              value: a?.steps != null ? Math.round(a.steps).toLocaleString() : "—",
+              color: "#4ade80",
+              spark: mergeAppleSteps(monthWhoop, applePoints),
+              sparkColor: "#4ade80",
+            },
+            {
+              label: "Energy",
+              value: a?.active_energy_kcal != null ? `${Math.round(a.active_energy_kcal)} kcal` : latest.energyKcal != null ? `${latest.energyKcal} kcal` : "—",
+              color: "#38bdf8",
+              spark: monthWhoop.map((x) => x.energyKcal),
+              sparkColor: "#38bdf8",
+            },
+            { label: "7D strain", value: strain7d, color: "#c084fc", spark: monthWhoop.map((x) => x.strain), sparkColor: "#c084fc" },
+            {
+              label: "Walk",
+              value: fmt(a?.distance_mi, " mi", 1),
+              spark: [...monthApple].sort((a, b) => a.date.localeCompare(b.date)).map((p) => p.distance_mi ?? null),
+              sparkColor: "#fb923c",
+            },
           ]}
         />
 
@@ -846,10 +1068,10 @@ export default function HealthPanel({ darkMode = true }) {
           iconColor="#facc15"
           chart={<DonutChart protein={a?.protein_g} carbs={a?.carbs_g} fat={a?.fat_g} />}
           metrics={[
-            { label: "Cal left", value: calLeft.toLocaleString(), color: "#a3a3a3" },
-            { label: "Prot left", value: `${protLeft}g`, color: "#fb923c" },
-            { label: "Carbs", value: fmt(a?.carbs_g, "g"), color: "#3b82f6" },
-            { label: "Fat", value: fmt(a?.fat_g, "g"), color: "#facc15" },
+            { label: "Cal left", value: calLeft.toLocaleString(), color: "#a3a3a3", spark: nutCalLeft, sparkColor: "#a3a3a3" },
+            { label: "Prot left", value: `${protLeft}g`, color: "#fb923c", spark: nutProtLeft, sparkColor: "#fb923c" },
+            { label: "Carbs", value: fmt(a?.carbs_g, "g"), color: "#3b82f6", spark: nutCarbs, sparkColor: "#3b82f6" },
+            { label: "Fat", value: fmt(a?.fat_g, "g"), color: "#facc15", spark: nutFat, sparkColor: "#facc15" },
             { label: "DEXA RMR", value: dexaRmr != null ? `${dexaRmr} kcal` : "—", color: "#737373" },
             { label: "Est TDEE", value: estTdee != null ? `${estTdee} kcal` : "—", color: "#c084fc" },
           ]}
