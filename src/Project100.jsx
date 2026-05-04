@@ -228,14 +228,26 @@ export default function Project100({ session, darkMode = true }) {
           <StatBox label="HABITS"  value={habits.length}  color="#A78BFA" t={t} />
         </div>
 
+        {/* TODAY header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: -14 }}>
+          <span style={{ fontSize: 8, color: t.subtext, letterSpacing: 2 }}>HABIT</span>
+          <span style={{ fontSize: 8, color: t.subtext, letterSpacing: 2 }}>TODAY</span>
+        </div>
+
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {habits.map((h, hi) => {
             let done = 0;
             for (let d = 0; d < elapsed; d++) if ((wheel[`${hi}-${d}`] || 0) === 1) done++;
             const pct = elapsed ? Math.round(done / elapsed * 100) : 0;
+            const todayState = wheel[`${hi}-${todayIdx}`] || 0;
+            const todayDone = todayState === 1;
+            const toggleToday = () => {
+              const k = `${hi}-${todayIdx}`;
+              saveWheel({ ...wheel, [k]: todayDone ? 0 : 1 });
+            };
             return (
               <div key={h.id} style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", background: t.habitBg, borderRadius: 8, border: `1px solid ${t.habitBorder}`, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "center", background: t.habitBg, borderRadius: 8, border: `1px solid ${todayDone ? h.color + "55" : t.habitBorder}`, overflow: "hidden", transition: "border-color 0.2s" }}>
                   <div style={{ width: 4, alignSelf: "stretch", background: h.color, flexShrink: 0 }} />
                   <div style={{ flex: 1, padding: "10px 10px", minWidth: 0 }}>
                     {editingId === h.id ? (
@@ -254,13 +266,30 @@ export default function Project100({ session, darkMode = true }) {
                       <span
                         onClick={() => { setEditingId(h.id); setEditVal(h.label); }}
                         title="Click to rename"
-                        style={{ fontSize: 12, cursor: "pointer", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: t.habitLabel }}
+                        style={{ fontSize: 12, cursor: "pointer", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: todayDone ? h.color : t.habitLabel }}
                       >
                         {h.label}
                       </span>
                     )}
                   </div>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: h.color, paddingRight: 6, flexShrink: 0 }}>{pct}%</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: t.subtext, paddingRight: 6, flexShrink: 0 }}>{pct}%</span>
+                  {/* Today checkbox */}
+                  <button
+                    onClick={toggleToday}
+                    title={todayDone ? "Mark as not done" : "Mark as done today"}
+                    style={{
+                      width: 28, height: 28,
+                      borderRadius: 7,
+                      border: `2px solid ${todayDone ? h.color : t.deleteColor}`,
+                      background: todayDone ? h.color + "22" : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      flexShrink: 0, cursor: "pointer",
+                      marginRight: 6,
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    {todayDone && <span style={{ color: h.color, fontSize: 14, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                  </button>
                   <button onClick={() => deleteHabit(h.id)} style={{ background: "none", border: "none", color: t.deleteColor, cursor: "pointer", fontSize: 16, padding: "0 8px 0 0", flexShrink: 0, lineHeight: 1 }}>×</button>
                 </div>
                 <div style={{ height: 3, background: t.border, borderRadius: "0 0 3px 3px", overflow: "hidden" }}>
@@ -276,7 +305,7 @@ export default function Project100({ session, darkMode = true }) {
         </div>
 
         <div style={{ borderTop: `1px solid ${t.legendBorder}`, paddingTop: 14, marginTop: "auto" }}>
-          <div style={{ fontSize: 8, color: t.legendLabel, letterSpacing: 2, marginBottom: 10 }}>CLICK SEGMENTS TO LOG</div>
+          <div style={{ fontSize: 8, color: t.legendLabel, letterSpacing: 2, marginBottom: 10 }}>CHECK TODAY · OR CLICK SEGMENTS</div>
           {[
             { label: "Empty",  color: t.emptyFill, border: t.border },
             { label: "Done",   color: "#22c55e",   border: "#22c55e" },
