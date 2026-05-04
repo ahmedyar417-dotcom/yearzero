@@ -1347,8 +1347,8 @@ export default function App() {
       {activeTab === "track" && <Project100 session={session} darkMode={isDark} />}
 
       {activeTab === "habits" && (
-        <div style={{ background: isDark ? "#0a0a0a" : "#f2f1ed", minHeight: "calc(100vh - 52px)" }}>
-          <HealthPanel session={session} />
+        <div style={{ background: isDark ? "#0f0f0f" : "#f2f1ed", minHeight: "calc(100vh - 52px)" }}>
+          <HealthPanel session={session} darkMode={isDark} />
           <div style={{ borderTop: `1px solid ${isDark ? "#1a1a1a" : "#e5e5e5"}`, margin: "0 20px" }} />
           <OutreachPanel />
         </div>

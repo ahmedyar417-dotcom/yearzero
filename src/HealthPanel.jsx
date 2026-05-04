@@ -12,9 +12,9 @@ const fmt = (v, unit = "", decimals = 0) =>
 
 const recoveryColor = (score) => {
   if (score == null) return "#aaa";
-  if (score >= 67) return "#00FF88";
-  if (score >= 34) return "#FFD700";
-  return "#FF6B35";
+  if (score >= 67) return "#22c55e";
+  if (score >= 34) return "#fbbf24";
+  return "#fb923c";
 };
 
 const recoveryLabel = (score) => {
@@ -26,21 +26,32 @@ const recoveryLabel = (score) => {
 
 const strainColor = (strain) => {
   if (strain == null) return "#aaa";
-  if (strain >= 18) return "#FF6B35";
-  if (strain >= 14) return "#FFD700";
-  if (strain >= 10) return "#A78BFA";
-  return "#00FF88";
+  if (strain >= 18) return "#fb923c";
+  if (strain >= 14) return "#fbbf24";
+  if (strain >= 10) return "#a78bfa";
+  return "#34d399";
 };
 
 const HEALTH_KEY = () => `yz-health-${new Date().toISOString().slice(0, 10)}`;
 
 const ls = {
-  get: (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } },
-  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  get: (k) => {
+    try {
+      const v = localStorage.getItem(k);
+      return v ? JSON.parse(v) : null;
+    } catch {
+      return null;
+    }
+  },
+  set: (k, v) => {
+    try {
+      localStorage.setItem(k, JSON.stringify(v));
+    } catch {}
+  },
 };
 
-// Pure SVG sparkline — decorative multi-line chart
-function Sparkline({ datasets, legend, w = 145, h = 52 }) {
+/** Decorative multi-line chart — colors aligned with WHOOP-style dashboard */
+function Sparkline({ datasets, legend, legendMuted = "#6b7280", w = 150, h = 54 }) {
   const pad = { top: 4, bottom: 4, left: 2, right: 2 };
   const iw = w - pad.left - pad.right;
   const ih = h - pad.top - pad.bottom;
@@ -68,23 +79,20 @@ function Sparkline({ datasets, legend, w = 145, h = 52 }) {
             d={makePath(ds.values)}
             fill="none"
             stroke={ds.color}
-            strokeWidth={1.5}
+            strokeWidth={1.6}
             strokeDasharray={ds.dashed ? "4 3" : undefined}
-            opacity={0.85}
+            opacity={0.92}
           />
         ))}
       </svg>
       {legend && (
-        <div style={{ display: "flex", gap: 7, marginTop: 5, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {legend.map((l) => (
             <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 3 }}>
               <svg width={12} height={3} style={{ overflow: "visible" }}>
-                <line x1={0} y1={1.5} x2={12} y2={1.5}
-                  stroke={l.color} strokeWidth={1.5}
-                  strokeDasharray={l.dashed ? "3 2" : undefined}
-                />
+                <line x1={0} y1={1.5} x2={12} y2={1.5} stroke={l.color} strokeWidth={1.6} strokeDasharray={l.dashed ? "3 2" : undefined} />
               </svg>
-              <span style={{ fontSize: 7.5, color: "#3a3a3a", letterSpacing: 0.5 }}>{l.label}</span>
+              <span style={{ fontSize: 7, color: legendMuted, letterSpacing: 0.4 }}>{l.label}</span>
             </div>
           ))}
         </div>
@@ -93,16 +101,17 @@ function Sparkline({ datasets, legend, w = 145, h = 52 }) {
   );
 }
 
-// SVG donut chart — uses real macro data
 function DonutChart({ protein, carbs, fat }) {
-  const r = 26, cx = 36, cy = 36;
+  const r = 26,
+    cx = 36,
+    cy = 36;
   const circ = 2 * Math.PI * r;
   const total = (protein || 0) + (carbs || 0) + (fat || 0);
 
   const segments = [
-    { value: protein || 0, color: "#00FF88", label: "PROTEIN" },
-    { value: carbs || 0, color: "#FFD700", label: "CARBS" },
-    { value: fat || 0, color: "#A78BFA", label: "FAT" },
+    { value: protein || 0, color: "#fb923c", label: "PROTEIN" },
+    { value: carbs || 0, color: "#3b82f6", label: "CARBS" },
+    { value: fat || 0, color: "#fbbf24", label: "FAT" },
   ];
 
   let cumPct = 0;
@@ -110,31 +119,35 @@ function DonutChart({ protein, carbs, fat }) {
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <svg width={72} height={72} style={{ flexShrink: 0 }}>
         {total === 0 ? (
-          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1f1f1f" strokeWidth={9} />
-        ) : segments.map((s, i) => {
-          const pct = s.value / total;
-          const dash = pct * circ;
-          const offset = circ - cumPct * circ;
-          cumPct += pct;
-          return (
-            <circle
-              key={i}
-              cx={cx} cy={cy} r={r}
-              fill="none"
-              stroke={s.color}
-              strokeWidth={9}
-              strokeDasharray={`${dash} ${circ}`}
-              strokeDashoffset={offset}
-              style={{ transform: "rotate(-90deg)", transformOrigin: `${cx}px ${cy}px` }}
-            />
-          );
-        })}
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#2a2a2a" strokeWidth={9} />
+        ) : (
+          segments.map((s, i) => {
+            const pct = s.value / total;
+            const dash = pct * circ;
+            const offset = circ - cumPct * circ;
+            cumPct += pct;
+            return (
+              <circle
+                key={i}
+                cx={cx}
+                cy={cy}
+                r={r}
+                fill="none"
+                stroke={s.color}
+                strokeWidth={9}
+                strokeDasharray={`${dash} ${circ}`}
+                strokeDashoffset={offset}
+                style={{ transform: "rotate(-90deg)", transformOrigin: `${cx}px ${cy}px` }}
+              />
+            );
+          })
+        )}
       </svg>
-      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {segments.map((s) => (
           <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: s.color, opacity: total === 0 ? 0.2 : 1 }} />
-            <span style={{ fontSize: 8, color: "#3a3a3a", letterSpacing: 0.5 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: s.color, opacity: total === 0 ? 0.25 : 1 }} />
+            <span style={{ fontSize: 8, color: "#9ca3af", letterSpacing: 0.5 }}>
               {s.label} {total > 0 ? Math.round((s.value / total) * 100) : 0}%
             </span>
           </div>
@@ -144,137 +157,180 @@ function DonutChart({ protein, carbs, fat }) {
   );
 }
 
-function HeroCard({ label, value, sub1, sub2, gradient }) {
+function HeroCard({ label, value, lines = [], gradient }) {
   return (
-    <div style={{
-      background: gradient,
-      borderRadius: 14,
-      padding: "22px 26px",
-      flex: 1,
-      minWidth: 0,
-      display: "flex",
-      flexDirection: "column",
-      gap: 3,
-    }}>
-      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", letterSpacing: 2, fontWeight: 700 }}>
-        {label.toUpperCase()}
-      </span>
-      <span style={{ fontSize: 52, fontWeight: 800, color: "#fff", lineHeight: 1.05, fontFamily: "system-ui, -apple-system, sans-serif", marginTop: 4 }}>
+    <div
+      style={{
+        background: gradient,
+        borderRadius: 12,
+        padding: "18px 20px",
+        flex: 1,
+        minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
+      }}
+    >
+      <span style={{ fontSize: 8, color: "rgba(255,255,255,0.5)", letterSpacing: 2.2, fontWeight: 700 }}>{label.toUpperCase()}</span>
+      <span
+        style={{
+          fontSize: 46,
+          fontWeight: 800,
+          color: "#fff",
+          lineHeight: 1.02,
+          fontFamily: "system-ui, -apple-system, sans-serif",
+          marginTop: 2,
+          letterSpacing: -1,
+        }}
+      >
         {value}
       </span>
-      {sub1 && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginTop: 3 }}>{sub1}</span>}
-      {sub2 && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", marginTop: 1 }}>{sub2}</span>}
+      {lines.map((line, i) => (
+        <span
+          key={i}
+          style={{
+            fontSize: i === 0 ? 11 : 10,
+            color: i === 0 ? "rgba(255,255,255,0.82)" : "rgba(255,255,255,0.48)",
+            marginTop: i === 0 ? 4 : 1,
+            lineHeight: 1.35,
+          }}
+        >
+          {line}
+        </span>
+      ))}
     </div>
   );
 }
 
-function Metric({ label, value, color }) {
+function Metric({ label, value, color, muted, valueDefault = "#e5e7eb" }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <span style={{ fontSize: 9, color: "#4a4a4a", letterSpacing: 1, textTransform: "uppercase", fontWeight: 600 }}>{label}</span>
-      <span style={{ fontSize: 16, fontWeight: 600, color: color || "#c0c0c0", fontFamily: "system-ui, -apple-system, sans-serif" }}>{value}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ fontSize: 8, color: muted || "#6b7280", letterSpacing: 1.2, textTransform: "uppercase", fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: 600, color: color ?? valueDefault, fontFamily: "system-ui, -apple-system, sans-serif" }}>{value}</span>
     </div>
   );
 }
 
-function Panel({ title, main, mainSub, mainColor, metrics, chart }) {
+function PanelIcon({ color }) {
   return (
-    <div style={{
-      background: "#111",
-      border: "1px solid #1c1c1c",
-      borderRadius: 14,
-      padding: "20px 22px",
-      display: "flex",
-      flexDirection: "column",
-      gap: 14,
-    }}>
-      <span style={{ fontSize: 9, color: "#3a3a3a", letterSpacing: 2, fontWeight: 700 }}>{title.toUpperCase()}</span>
+    <div
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: "50%",
+        background: `linear-gradient(145deg, ${color}55, ${color}18)`,
+        border: `1px solid ${color}44`,
+        flexShrink: 0,
+      }}
+    />
+  );
+}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 44, fontWeight: 800, color: mainColor || "#fff", lineHeight: 1, fontFamily: "system-ui, -apple-system, sans-serif" }}>
-            {main}
-          </div>
-          {mainSub && <div style={{ fontSize: 11, color: "#4a4a4a", marginTop: 6 }}>{mainSub}</div>}
-        </div>
-        {chart && <div style={{ flexShrink: 0, marginTop: 2 }}>{chart}</div>}
+function Panel({ title, main, mainSub, mainColor, metrics, chart, iconColor = "#6366f1", surface, border, titleColor, subColor, dividerColor, metricMuted, valueDefault = "#e5e7eb" }) {
+  return (
+    <div
+      style={{
+        background: surface || "#141414",
+        border: `1px solid ${border || "#252525"}`,
+        borderRadius: 12,
+        padding: "18px 18px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        minHeight: 0,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <span style={{ fontSize: 8, color: titleColor || "#525252", letterSpacing: 2.4, fontWeight: 700 }}>{title.toUpperCase()}</span>
+        <PanelIcon color={iconColor} />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", paddingTop: 12, borderTop: "1px solid #1c1c1c" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 40, fontWeight: 800, color: mainColor || "#fff", lineHeight: 1, fontFamily: "system-ui, -apple-system, sans-serif", letterSpacing: -1 }}>
+            {main}
+          </div>
+          {mainSub && <div style={{ fontSize: 11, color: subColor || "#737373", marginTop: 6, lineHeight: 1.35 }}>{mainSub}</div>}
+        </div>
+        {chart && <div style={{ flexShrink: 0, marginTop: -4 }}>{chart}</div>}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", paddingTop: 14, borderTop: `1px solid ${dividerColor || "#252525"}` }}>
         {metrics.map(({ label, value, color }) => (
-          <Metric key={label} label={label} value={value} color={color} />
+          <Metric key={label} label={label} value={value} color={color} muted={metricMuted} valueDefault={valueDefault} />
         ))}
       </div>
     </div>
   );
 }
 
-// Static sparkline data — decorative; reflects shape of each metric type
 const SPARKLINES = {
   recovery: {
     datasets: [
-      { values: [0.42, 0.36, 0.40, 0.30, 0.34, 0.28, 0.32], color: "#00FF88" },
-      { values: [0.62, 0.64, 0.59, 0.65, 0.62, 0.64, 0.61], color: "#FF6B35" },
-      { values: [0.72, 0.68, 0.74, 0.70, 0.76, 0.71, 0.74], color: "#A78BFA" },
-      { values: [0.91, 0.92, 0.90, 0.93, 0.91, 0.92, 0.94], color: "#FFD700" },
+      { values: [0.42, 0.36, 0.4, 0.3, 0.34, 0.28, 0.32], color: "#fbbf24" },
+      { values: [0.62, 0.64, 0.59, 0.65, 0.62, 0.64, 0.61], color: "#60a5fa" },
+      { values: [0.72, 0.68, 0.74, 0.7, 0.76, 0.71, 0.74], color: "#a78bfa" },
+      { values: [0.91, 0.92, 0.9, 0.93, 0.91, 0.92, 0.94], color: "#34d399" },
     ],
     legend: [
-      { label: "RECOVERY", color: "#00FF88" },
-      { label: "RHR", color: "#FF6B35" },
-      { label: "HRV", color: "#A78BFA" },
-      { label: "SPO2", color: "#FFD700" },
+      { label: "RECOVERY", color: "#fbbf24" },
+      { label: "RHR", color: "#60a5fa" },
+      { label: "HRV", color: "#a78bfa" },
+      { label: "SpO2", color: "#34d399" },
     ],
   },
   pulse: {
-    datasets: [
-      { values: [0.5, 0.5, 0.52, 0.5, 0.12, 0.92, 0.48, 0.44, 0.5, 0.5, 0.52, 0.5, 0.12, 0.92, 0.48, 0.44, 0.5], color: "#1AE8B4" },
-    ],
-    legend: [{ label: "PULSE TRACE", color: "#1AE8B4" }],
+    datasets: [{ values: [0.5, 0.5, 0.52, 0.5, 0.12, 0.92, 0.48, 0.44, 0.5, 0.5, 0.52, 0.5, 0.12, 0.92, 0.48, 0.44, 0.5], color: "#2dd4bf" }],
+    legend: [{ label: "PULSE TRACE", color: "#2dd4bf" }],
   },
   sleep: {
     datasets: [
-      { values: [0.72, 0.68, 0.73, 0.70, 0.75, 0.71, 0.73], color: "#FFD700" },
-      { values: [0.44, 0.47, 0.43, 0.50, 0.46, 0.49, 0.47], color: "#6366f1" },
-      { values: [0.28, 0.32, 0.30, 0.35, 0.29, 0.33, 0.31], color: "#A78BFA" },
+      { values: [0.72, 0.68, 0.73, 0.7, 0.75, 0.71, 0.73], color: "#fb923c" },
+      { values: [0.44, 0.47, 0.43, 0.5, 0.46, 0.49, 0.47], color: "#3b82f6" },
+      { values: [0.28, 0.32, 0.3, 0.35, 0.29, 0.33, 0.31], color: "#a78bfa" },
     ],
     legend: [
-      { label: "CORE", color: "#FFD700" },
-      { label: "DEEP", color: "#6366f1" },
-      { label: "REM", color: "#A78BFA" },
+      { label: "CORE", color: "#fb923c" },
+      { label: "DEEP", color: "#3b82f6" },
+      { label: "REM", color: "#a78bfa" },
     ],
   },
   body: {
     datasets: [
-      { values: [0.58, 0.60, 0.56, 0.59, 0.55, 0.57, 0.54], color: "#60A5FA" },
-      { values: [0.59, 0.57, 0.55, 0.53, 0.51, 0.49, 0.47], color: "#555", dashed: true },
+      { values: [0.58, 0.6, 0.56, 0.59, 0.55, 0.57, 0.54], color: "#60a5fa" },
+      { values: [0.59, 0.57, 0.55, 0.53, 0.51, 0.49, 0.47], color: "#737373", dashed: true },
     ],
     legend: [
-      { label: "WEIGHT", color: "#60A5FA" },
-      { label: "TREND", color: "#555", dashed: true },
+      { label: "WEIGHT", color: "#60a5fa" },
+      { label: "TREND", color: "#737373", dashed: true },
     ],
   },
   activity: {
     datasets: [
-      { values: [0.38, 0.55, 0.45, 0.62, 0.40, 0.58, 0.50], color: "#A78BFA" },
-      { values: [0.28, 0.44, 0.36, 0.50, 0.32, 0.46, 0.40], color: "#00FF88" },
-      { values: [0.22, 0.38, 0.30, 0.45, 0.26, 0.40, 0.34], color: "#FFD700" },
-      { values: [0.30, 0.33, 0.36, 0.39, 0.42, 0.45, 0.48], color: "#555", dashed: true },
+      { values: [0.38, 0.55, 0.45, 0.62, 0.4, 0.58, 0.5], color: "#fb923c" },
+      { values: [0.28, 0.44, 0.36, 0.5, 0.32, 0.46, 0.4], color: "#60a5fa" },
+      { values: [0.22, 0.38, 0.3, 0.45, 0.26, 0.4, 0.34], color: "#a78bfa" },
+      { values: [0.3, 0.33, 0.36, 0.39, 0.42, 0.45, 0.48], color: "#525252", dashed: true },
     ],
     legend: [
-      { label: "STEPS", color: "#A78BFA" },
-      { label: "ENERGY", color: "#00FF88" },
-      { label: "STRAIN", color: "#FFD700" },
-      { label: "TREND", color: "#555", dashed: true },
+      { label: "STEPS", color: "#fb923c" },
+      { label: "ENERGY", color: "#60a5fa" },
+      { label: "STRAIN", color: "#a78bfa" },
+      { label: "TREND", color: "#525252", dashed: true },
     ],
   },
 };
 
-export default function HealthPanel() {
+const CAL_GOAL = 1900;
+const PROTEIN_GOAL_G = 180;
+const SLEEP_NEED_MS = 8 * 3600000 + 38 * 60000;
+
+export default function HealthPanel({ darkMode = true }) {
   const [data, setData] = useState(() => ls.get(HEALTH_KEY()) || {});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // On mount: pull today's data from Supabase (captures Apple Health from iOS Shortcut)
   useEffect(() => {
     const saved = ls.get(HEALTH_KEY());
     if (saved) setData(saved);
@@ -294,12 +350,10 @@ export default function HealthPanel() {
     setLoading(true);
     setError(null);
     try {
-      // Fetch fresh WHOOP data
       const whoopRes = await fetch("/api/whoop");
       const whoopJson = await whoopRes.json();
       if (!whoopRes.ok) throw new Error(whoopJson.error || "WHOOP fetch failed");
 
-      // Also pull latest Supabase data (includes Apple Health from iOS Shortcut)
       const todayRes = await fetch("/api/health-today");
       const todayJson = await todayRes.json();
 
@@ -321,21 +375,76 @@ export default function HealthPanel() {
   const strainVal = w?.strain;
   const sColor = strainColor(strainVal);
 
-  const whoopTime = w?.fetchedAt
-    ? new Date(w.fetchedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
-    : null;
-  const appleTime = a?.fetchedAt
-    ? new Date(a.fetchedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
-    : null;
+  const whoopTime = w?.fetchedAt ? new Date(w.fetchedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : null;
+  const appleTime = a?.fetchedAt ? new Date(a.fetchedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : null;
+
+  const totalSleepMs = w?.sleep?.totalMs;
+  const sleepSubNight = totalSleepMs != null ? `Night ${msToHm(totalSleepMs)} · Naps —` : "Night — · Naps —";
+  const sleepDebt = w?.sleep?.debtMs;
+  const sleepLine2 =
+    sleepDebt != null
+      ? `${msToHm(sleepDebt)} debt vs 7D · ${msToHm(SLEEP_NEED_MS)} needed`
+      : w?.sleep?.efficiency != null
+        ? `${fmt(w.sleep.efficiency, "%")} efficiency · ${msToHm(SLEEP_NEED_MS)} target`
+        : `— vs 7D · ${msToHm(SLEEP_NEED_MS)} needed`;
+
+  const weightLb = a?.weight_lb;
+  const bf = a?.body_fat_pct;
+  const vsPlanLb = a?.vs_plan_lb;
+  const heroWeightLine1 =
+    vsPlanLb != null
+      ? `${vsPlanLb >= 0 ? "+" : ""}${vsPlanLb.toFixed(1)} lb vs plan`
+      : weightLb != null
+        ? "— vs plan"
+        : "— vs plan";
+  const heroWeightLine2 =
+    bf != null ? `${bf.toFixed(1)}% est. body fat · sync pace from logs` : "Body composition from Apple Health";
+
+  const todayShort = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+  const calIn = a?.calories != null ? Math.round(a.calories) : 0;
+  const protIn = a?.protein_g != null ? Math.round(a.protein_g) : 0;
+  const calLeft = Math.max(0, CAL_GOAL - calIn);
+  const protLeft = Math.max(0, PROTEIN_GOAL_G - protIn);
+  const estTdee = a?.tdee_kcal != null ? Math.round(a.tdee_kcal) : null;
+  const dexaRmr = a?.rmr_kcal != null ? Math.round(a.rmr_kcal) : null;
+
+  const theme = darkMode
+    ? { bg: "#0f0f0f", headerSub: "#737373", panel: "#141414", sparkLegend: "#6b7280", border: "#252525", panelTitle: "#525252", metricMuted: "#6b7280", finePrint: "#737373", valueDefault: "#e5e7eb" }
+    : { bg: "#ecebe8", headerSub: "#64748b", panel: "#ffffff", sparkLegend: "#94a3b8", border: "#e2e2df", panelTitle: "#78716c", metricMuted: "#78716c", finePrint: "#57534e", valueDefault: "#1c1917" };
+
+  const panelSkin = {
+    surface: theme.panel,
+    border: theme.border,
+    titleColor: theme.panelTitle,
+    subColor: theme.metricMuted,
+    dividerColor: theme.border,
+    metricMuted: theme.metricMuted,
+    valueDefault: theme.valueDefault,
+  };
+
+  const heroRecoveryLines = ["— vs 30D", `Day ${todayShort}`];
+
+  const heroRhrLines = [
+    "— vs 30D",
+    w?.recovery?.hrv != null ? `${w.recovery.hrv} ms HRV · WHOOP resting heart rate` : "WHOOP resting heart rate",
+  ];
 
   return (
-    <div style={{ padding: "20px 24px", maxWidth: 1300, margin: "0 auto", fontFamily: "system-ui, sans-serif" }}>
-
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+    <div
+      style={{
+        padding: "20px 22px 28px",
+        maxWidth: 1280,
+        margin: "0 auto",
+        fontFamily: "system-ui, -apple-system, sans-serif",
+        background: theme.bg,
+        minHeight: "calc(100vh - 52px)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
         <div>
-          <div style={{ fontSize: 10, color: "#555", letterSpacing: 2, fontWeight: 700 }}>HEALTH</div>
-          <div style={{ fontSize: 9, color: "#333", letterSpacing: 1, marginTop: 3 }}>
+          <div style={{ fontSize: 9, color: theme.panelTitle, letterSpacing: 3, fontWeight: 700 }}>HEALTH</div>
+          <div style={{ fontSize: 9, color: theme.headerSub, letterSpacing: 0.6, marginTop: 4 }}>
             {whoopTime ? `WHOOP ${whoopTime}` : "WHOOP NOT SYNCED"}
             {appleTime ? ` · APPLE ${appleTime}` : " · APPLE NOT SYNCED"}
           </div>
@@ -344,147 +453,167 @@ export default function HealthPanel() {
           onClick={fetchWhoop}
           disabled={loading}
           style={{
-            background: loading ? "#181818" : "#00FF8814",
-            border: "1px solid #00FF8833",
+            background: loading ? "#1a1a1a" : "rgba(45, 212, 191, 0.12)",
+            border: `1px solid ${loading ? "#333" : "rgba(45, 212, 191, 0.35)"}`,
             borderRadius: 8,
-            padding: "8px 18px",
+            padding: "9px 20px",
             cursor: loading ? "not-allowed" : "pointer",
-            fontSize: 10,
-            color: loading ? "#444" : "#00FF88",
-            letterSpacing: 1,
+            fontSize: 9,
+            color: loading ? "#525252" : "#2dd4bf",
+            letterSpacing: 1.6,
             fontWeight: 700,
           }}
         >
-          {loading ? "SYNCING..." : "SYNC WHOOP"}
+          {loading ? "SYNCING…" : "SYNC WHOOP"}
         </button>
       </div>
 
       {error && (
-        <div style={{ background: "#FF6B3510", border: "1px solid #FF6B3540", borderRadius: 10, padding: "10px 16px", fontSize: 11, color: "#FF6B35", marginBottom: 14 }}>
+        <div style={{ background: "rgba(251, 146, 60, 0.08)", border: "1px solid rgba(251, 146, 60, 0.25)", borderRadius: 10, padding: "10px 16px", fontSize: 11, color: "#fb923c", marginBottom: 16 }}>
           {error}
         </div>
       )}
 
-      {/* Hero row */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
         <HeroCard
           label="Recovery Score"
           value={fmt(recScore)}
-          sub1={recoveryLabel(recScore)}
-          gradient="linear-gradient(135deg, #5B3FAF 0%, #3D70C7 100%)"
+          lines={heroRecoveryLines}
+          gradient="linear-gradient(135deg, #6d28d9 0%, #4f46e5 45%, #2563eb 100%)"
         />
         <HeroCard
           label="Resting Heart Rate"
           value={w?.recovery?.rhr != null ? `${w.recovery.rhr} bpm` : "—"}
-          sub1={w?.recovery?.hrv != null ? `${w.recovery.hrv} ms HRV · WHOOP resting heart rate` : "WHOOP resting heart rate"}
-          gradient="linear-gradient(135deg, #0C8B78 0%, #1AB898 100%)"
+          lines={heroRhrLines}
+          gradient="linear-gradient(135deg, #0f766e 0%, #14b8a6 50%, #2dd4bf 100%)"
         />
         <HeroCard
           label="Total Sleep"
-          value={msToHm(w?.sleep?.totalMs)}
-          sub1={w?.sleep?.efficiency != null ? `${w.sleep.efficiency}% efficiency` : undefined}
-          sub2={w?.sleep?.debtMs != null ? `${msToHm(w.sleep.debtMs)} sleep debt` : undefined}
-          gradient="linear-gradient(135deg, #1A7A50 0%, #22A86C 100%)"
+          value={msToHm(totalSleepMs)}
+          lines={[sleepSubNight, sleepLine2]}
+          gradient="linear-gradient(135deg, #14532d 0%, #166534 40%, #22c55e 100%)"
         />
         <HeroCard
           label="Current Weight"
-          value={a?.weight_lb != null ? `${a.weight_lb.toFixed(1)} lb` : "—"}
-          sub1={a?.body_fat_pct != null ? `${a.body_fat_pct.toFixed(1)}% est. body fat` : "Run shortcut to sync"}
-          gradient="linear-gradient(135deg, #1A5AA0 0%, #2D80D8 100%)"
+          value={weightLb != null ? `${weightLb.toFixed(1)} lb` : "—"}
+          lines={[heroWeightLine1, heroWeightLine2]}
+          gradient="linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 50%, #38bdf8 100%)"
         />
       </div>
 
-      {/* Panel grid: Recovery | Pulse | Sleep / Body | Activity | Nutrition */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
         <Panel
+          {...panelSkin}
           title="Recovery"
           main={fmt(recScore)}
           mainSub={recoveryLabel(recScore)}
           mainColor={recColor}
-          chart={<Sparkline {...SPARKLINES.recovery} />}
+          iconColor="#a78bfa"
+          chart={<Sparkline {...SPARKLINES.recovery} legendMuted={theme.sparkLegend} />}
           metrics={[
             { label: "RHR", value: fmt(w?.recovery?.rhr, " bpm") },
-            { label: "HRV", value: fmt(w?.recovery?.hrv, " ms"), color: "#A78BFA" },
+            { label: "HRV", value: fmt(w?.recovery?.hrv, " ms"), color: "#a78bfa" },
             { label: "SpO2", value: fmt(w?.recovery?.spo2, "%", 1) },
-            { label: "Sleep Debt", value: msToHm(w?.sleep?.debtMs), color: w?.sleep?.debtMs > 0 ? "#FF6B35" : "#00FF88" },
+            { label: "Need", value: msToHm(SLEEP_NEED_MS), color: "#94a3b8" },
           ]}
         />
 
         <Panel
+          {...panelSkin}
           title="Pulse"
           main={w?.recovery?.rhr != null ? `${w.recovery.rhr} bpm` : "—"}
           mainSub="WHOOP resting heart rate"
-          mainColor="#fff"
-          chart={<Sparkline {...SPARKLINES.pulse} />}
+          mainColor={darkMode ? "#ffffff" : "#0c0a09"}
+          iconColor="#2dd4bf"
+          chart={<Sparkline {...SPARKLINES.pulse} w={160} h={56} legendMuted={theme.sparkLegend} />}
           metrics={[
-            { label: "Cycle Avg", value: fmt(w?.avgHr, " bpm") },
-            { label: "Max HR", value: fmt(w?.maxHr, " bpm"), color: "#FF6B35" },
+            { label: "Cycle avg", value: fmt(w?.avgHr, " bpm") },
+            { label: "Resp", value: "—" },
             { label: "SpO2", value: fmt(w?.recovery?.spo2, "%", 1) },
-            { label: "HRV", value: fmt(w?.recovery?.hrv, " ms"), color: "#A78BFA" },
+            { label: "Workout max", value: fmt(w?.maxHr, " bpm"), color: "#fb923c" },
           ]}
         />
 
         <Panel
+          {...panelSkin}
           title="Sleep"
-          main={msToHm(w?.sleep?.totalMs)}
-          mainSub={w?.sleep?.efficiency != null ? `${w.sleep.efficiency}% efficiency` : undefined}
-          mainColor="#A78BFA"
-          chart={<Sparkline {...SPARKLINES.sleep} />}
+          main={msToHm(totalSleepMs)}
+          mainSub={w?.sleep?.efficiency != null ? `${fmt(w.sleep.efficiency, "%")} efficiency · ${sleepSubNight}` : sleepSubNight}
+          mainColor="#a78bfa"
+          iconColor="#818cf8"
+          chart={<Sparkline {...SPARKLINES.sleep} legendMuted={theme.sparkLegend} />}
           metrics={[
-            { label: "Deep", value: msToHm(w?.sleep?.deepMs), color: "#6366f1" },
-            { label: "REM", value: msToHm(w?.sleep?.remMs), color: "#A78BFA" },
-            { label: "Light", value: msToHm(w?.sleep?.lightMs) },
-            { label: "Efficiency", value: fmt(w?.sleep?.efficiency, "%"), color: w?.sleep?.efficiency >= 85 ? "#00FF88" : "#FFD700" },
+            { label: "Deep", value: msToHm(w?.sleep?.deepMs), color: "#3b82f6" },
+            { label: "REM", value: msToHm(w?.sleep?.remMs), color: "#a78bfa" },
+            { label: "Eff", value: fmt(w?.sleep?.efficiency, "%"), color: w?.sleep?.efficiency >= 85 ? "#34d399" : "#fbbf24" },
+            { label: "Debt", value: msToHm(w?.sleep?.debtMs), color: w?.sleep?.debtMs > 0 ? "#fb923c" : "#34d399" },
           ]}
         />
 
         <Panel
+          {...panelSkin}
           title="Body"
-          main={a?.weight_lb != null ? `${a.weight_lb.toFixed(1)} lb` : "—"}
-          mainSub={a?.body_fat_pct != null ? `${a.body_fat_pct.toFixed(1)}% body fat` : "Run shortcut to sync"}
-          mainColor="#FFD700"
-          chart={<Sparkline {...SPARKLINES.body} />}
+          main={weightLb != null ? `${weightLb.toFixed(1)} lb` : "—"}
+          mainSub={bf != null ? `${bf.toFixed(1)}% est. body fat` : "Sync Apple Health"}
+          mainColor="#fbbf24"
+          iconColor="#60a5fa"
+          chart={<Sparkline {...SPARKLINES.body} legendMuted={theme.sparkLegend} />}
           metrics={[
-            { label: "BF Est", value: fmt(a?.body_fat_pct, "%", 1) },
-            { label: "Steps", value: a?.steps != null ? Math.round(a.steps).toLocaleString() : "—", color: "#00FF88" },
-            { label: "Calories In", value: a?.calories != null ? Math.round(a.calories).toLocaleString() : "—", color: "#FF6B35" },
+            { label: "BF est", value: fmt(bf, "%", 1) },
+            { label: "Steps", value: a?.steps != null ? Math.round(a.steps).toLocaleString() : "—", color: "#34d399" },
+            { label: "Calories in", value: a?.calories != null ? Math.round(a.calories).toLocaleString() : "—", color: "#fb923c" },
             { label: "Distance", value: fmt(a?.distance_mi, " mi", 1) },
           ]}
         />
 
         <Panel
+          {...panelSkin}
           title="Activity"
-          main={strainVal != null ? strainVal.toFixed(1) : "—"}
-          mainSub="Strain score"
+          main={strainVal != null ? `${strainVal.toFixed(1)} strain` : "—"}
+          mainSub={a?.steps != null ? `${Math.round(a.steps).toLocaleString()} steps today` : "Strain & movement"}
           mainColor={sColor}
-          chart={<Sparkline {...SPARKLINES.activity} />}
+          iconColor="#fb923c"
+          chart={<Sparkline {...SPARKLINES.activity} legendMuted={theme.sparkLegend} />}
           metrics={[
-            { label: "Steps", value: a?.steps != null ? Math.round(a.steps).toLocaleString() : "—", color: "#00FF88" },
+            { label: "Steps", value: a?.steps != null ? Math.round(a.steps).toLocaleString() : "—", color: "#34d399" },
+            { label: "Energy", value: a?.active_energy_kcal != null ? `${Math.round(a.active_energy_kcal)} kcal` : "—", color: "#60a5fa" },
+            { label: "7D strain", value: w?.strain_7d != null ? w.strain_7d.toFixed(1) : "—", color: "#a78bfa" },
             { label: "Walk", value: fmt(a?.distance_mi, " mi", 1) },
-            { label: "Avg HR", value: fmt(w?.avgHr, " bpm") },
-            { label: "Max HR", value: fmt(w?.maxHr, " bpm"), color: "#FF6B35" },
           ]}
         />
 
         <Panel
+          {...panelSkin}
           title="Nutrition"
-          main={a?.calories != null ? Math.round(a.calories).toLocaleString() : "0"}
-          mainSub={a?.protein_g != null ? `${Math.round(a.protein_g)}g / 180g protein` : "/ 1,900 kcal target"}
-          mainColor="#FF6B35"
+          main={`${calIn.toLocaleString()} / ${CAL_GOAL.toLocaleString()}`}
+          mainSub={`${protIn}g / ${PROTEIN_GOAL_G}g protein`}
+          mainColor="#fb923c"
+          iconColor="#fbbf24"
           chart={<DonutChart protein={a?.protein_g} carbs={a?.carbs_g} fat={a?.fat_g} />}
           metrics={[
-            { label: "Protein", value: fmt(a?.protein_g, "g"), color: "#00FF88" },
-            { label: "Carbs", value: fmt(a?.carbs_g, "g"), color: "#FFD700" },
-            { label: "Fat", value: fmt(a?.fat_g, "g"), color: "#A78BFA" },
-            { label: "Sugar", value: fmt(a?.sugar_g, "g"), color: "#FF6B35" },
+            { label: "Cal left", value: calLeft.toLocaleString(), color: "#94a3b8" },
+            { label: "Prot left", value: `${protLeft}g`, color: "#fb923c" },
+            { label: "Carbs", value: fmt(a?.carbs_g, "g"), color: "#3b82f6" },
+            { label: "Fat", value: fmt(a?.fat_g, "g"), color: "#fbbf24" },
+            { label: "DEXA RMR", value: dexaRmr != null ? `${dexaRmr} kcal` : "—", color: "#737373" },
+            { label: "Est TDEE", value: estTdee != null ? `${estTdee} kcal` : "—", color: "#a78bfa" },
           ]}
         />
-
       </div>
 
       {!a && (
-        <div style={{ marginTop: 10, padding: "10px 16px", background: "#111", border: "1px solid #1c1c1c", borderRadius: 10, fontSize: 10, color: "#333" }}>
+        <div
+          style={{
+            marginTop: 14,
+            padding: "12px 16px",
+            background: theme.panel,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 10,
+            fontSize: 9,
+            color: theme.finePrint,
+            letterSpacing: 0.4,
+          }}
+        >
           Apple Health data (weight, steps, nutrition) comes from your iOS Shortcut. Run it each morning to populate.
         </div>
       )}
