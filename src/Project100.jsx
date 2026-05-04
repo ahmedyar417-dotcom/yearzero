@@ -8,14 +8,14 @@ const TOTAL_DAYS    = 84;
 
 // Fan geometry — quarter circle anchored at bottom-left
 // Day 1 is at the right/bottom of the fan (360°), Day 84 at the top (270°)
-const FAN_END       = 360;   // day 1 side  (pointing right from center)
-const FAN_START     = 270;   // day 84 side (pointing up from center)
-const FAN_SWEEP     = FAN_END - FAN_START; // 90°
-const SEG_ANGLE     = FAN_SWEEP / TOTAL_DAYS; // ≈ 1.071° per day
-const SEG_GAP       = 0.18;  // degrees gap between adjacent segments
-const RING_GAP      = 4;     // viewBox units between rings
-const INNER_BASE    = 70;    // innermost ring inner radius (viewBox units)
-const LABEL_PAD     = 28;    // space outside outermost ring for day labels
+const FAN_END   = 360;
+const FAN_START = 270;
+const FAN_SWEEP = FAN_END - FAN_START; // 90°
+const SEG_ANGLE = FAN_SWEEP / TOTAL_DAYS;
+const SEG_GAP   = 0.15;  // degrees gap between adjacent segments
+const RING_GAP  = 6;     // viewBox units between rings
+const INNER_BASE = 80;   // innermost ring inner radius
+const LABEL_PAD  = 32;   // space outside outermost ring for day labels
 
 // SVG viewBox — square, center at (0, VB) = bottom-left corner
 const VB = 1000;
@@ -43,7 +43,6 @@ function ptOn(r, deg) {
   return { x: CX + r * Math.cos(rad), y: CY + r * Math.sin(rad) };
 }
 
-// Clockwise arc segment path (SVG sweep-flag = 1)
 function segPath(innerR, outerR, startDeg, endDeg) {
   const o1 = ptOn(outerR, startDeg);
   const o2 = ptOn(outerR, endDeg);
@@ -59,7 +58,6 @@ function segPath(innerR, outerR, startDeg, endDeg) {
   ].join(" ");
 }
 
-// Angle range for day d (0-indexed). Day 0 = day 1 is at the FAN_END / right side.
 function dayAngles(d) {
   const end   = FAN_END - d * SEG_ANGLE;
   const start = FAN_END - (d + 1) * SEG_ANGLE;
@@ -67,39 +65,85 @@ function dayAngles(d) {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-function StatBox({ label, value, color }) {
+function StatBox({ label, value, color, t }) {
   return (
     <div style={{
       flex: 1,
-      background: "#111",
-      border: "1px solid #1c1c1c",
+      background: t.statBg,
+      border: `1px solid ${t.statBorder}`,
       borderRadius: 10,
-      padding: "12px 8px",
+      padding: "14px 8px",
       textAlign: "center",
     }}>
-      <div style={{ fontSize: 24, fontWeight: 800, color: color || "#fff", lineHeight: 1, fontFamily: "system-ui" }}>
+      <div style={{ fontSize: 26, fontWeight: 800, color: color || t.text, lineHeight: 1, fontFamily: "system-ui" }}>
         {value}
       </div>
-      <div style={{ fontSize: 8, color: "#3a3a3a", letterSpacing: 2, marginTop: 5 }}>{label}</div>
+      <div style={{ fontSize: 9, color: t.subtext, letterSpacing: 2, marginTop: 5, fontFamily: "system-ui" }}>{label}</div>
     </div>
   );
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function Project100({ session, onBack }) {
+export default function Project100({ session, darkMode = true }) {
   const [habits,    setHabits]    = useState(() => ls.get("yz-p100-habits") || DEFAULT_HABITS);
   const [wheel,     setWheel]     = useState(() => ls.get("yz-p100-wheel")  || {});
   const [editingId, setEditingId] = useState(null);
   const [editVal,   setEditVal]   = useState("");
 
+  // ── Theme ──────────────────────────────────────────────────────────────────
+  const t = darkMode ? {
+    bg:           "#0a0a0a",
+    surface:      "#111",
+    border:       "#1a1a1a",
+    text:         "#fff",
+    subtext:      "#3a3a3a",
+    dim:          "#1f1f1f",
+    statBg:       "#111",
+    statBorder:   "#1c1c1c",
+    habitBg:      "#111",
+    habitBorder:  "#1a1a1a",
+    addBorder:    "#1f1f1f",
+    addColor:     "#2a2a2a",
+    emptyFill:    "#1a1a1a",
+    legendBorder: "#1a1a1a",
+    legendLabel:  "#222",
+    labelDot:     "#2e2e2e",
+    todayLbl:     "#ffffff",
+    deleteColor:  "#2a2a2a",
+    habitLabel:   "#ccc",
+    pctColor:     null, // uses habit.color
+    logHint:      "#1f1f1f",
+  } : {
+    bg:           "#f2f1ed",
+    surface:      "#fff",
+    border:       "#e5e5e5",
+    text:         "#1a1a1a",
+    subtext:      "#aaa",
+    dim:          "#e0e0e0",
+    statBg:       "#fff",
+    statBorder:   "#e5e5e5",
+    habitBg:      "#fff",
+    habitBorder:  "#ebebeb",
+    addBorder:    "#ddd",
+    addColor:     "#c0c0c0",
+    emptyFill:    "#e0e0e0",
+    legendBorder: "#e5e5e5",
+    legendLabel:  "#ccc",
+    labelDot:     "#c0c0c0",
+    todayLbl:     "#1a1a1a",
+    deleteColor:  "#ccc",
+    habitLabel:   "#555",
+    pctColor:     null,
+    logHint:      "#e8e8e8",
+  };
+
   // ── Date calculations ──────────────────────────────────────────────────────
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const msPerDay  = 86400000;
-  const elapsed   = Math.min(TOTAL_DAYS, Math.max(0, Math.floor((today - PROJECT_START) / msPerDay)));
-  const daysLeft  = Math.max(0, Math.ceil((DEADLINE - today) / msPerDay));
-  // today's day-index in the project (0-based), capped at 83
-  const todayIdx  = Math.min(TOTAL_DAYS - 1, elapsed);
+  const msPerDay = 86400000;
+  const elapsed  = Math.min(TOTAL_DAYS, Math.max(0, Math.floor((today - PROJECT_START) / msPerDay)));
+  const daysLeft = Math.max(0, Math.ceil((DEADLINE - today) / msPerDay));
+  const todayIdx = Math.min(TOTAL_DAYS - 1, elapsed);
 
   // ── Stats ──────────────────────────────────────────────────────────────────
   let streak = 0;
@@ -134,8 +178,8 @@ export default function Project100({ session, onBack }) {
     const color = PALETTE.find(c => !used.has(c)) || PALETTE[habits.length % PALETTE.length];
     saveHabits([...habits, { id: `h${Date.now()}`, label: "New habit", color }]);
   };
-  const deleteHabit = (id)         => saveHabits(habits.filter(h => h.id !== id));
-  const renameHabit = (id, label)  => saveHabits(habits.map(h => h.id === id ? { ...h, label } : h));
+  const deleteHabit = (id)        => saveHabits(habits.filter(h => h.id !== id));
+  const renameHabit = (id, label) => saveHabits(habits.map(h => h.id === id ? { ...h, label } : h));
 
   const handleSeg = (hi, d) => {
     const k = `${hi}-${d}`;
@@ -145,109 +189,83 @@ export default function Project100({ session, onBack }) {
   // ── Ring geometry ──────────────────────────────────────────────────────────
   const n         = habits.length || 1;
   const maxR      = VB - LABEL_PAD;
-  const ringW     = Math.max(20, (maxR - INNER_BASE - RING_GAP * (n - 1)) / n);
+  const ringW     = Math.max(60, (maxR - INNER_BASE - RING_GAP * (n - 1)) / n);
   const outerEdge = INNER_BASE + n * (ringW + RING_GAP) - RING_GAP;
-  const labelR    = outerEdge + LABEL_PAD - 4;
+  const labelR    = outerEdge + LABEL_PAD - 6;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div style={{
-      height: "100vh",
-      background: "#0a0a0a",
-      color: "#fff",
+      height: "calc(100vh - 52px)",
+      background: t.bg,
+      color: t.text,
       fontFamily: "system-ui, -apple-system, sans-serif",
       display: "flex",
-      flexDirection: "column",
       overflow: "hidden",
     }}>
 
-      {/* ── Top bar ──────────────────────────────────────────────────────────── */}
+      {/* ── LEFT PANEL ─────────────────────────────────────────────────────── */}
       <div style={{
-        borderBottom: "1px solid #1a1a1a",
-        padding: "10px 20px",
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
+        width: 290,
         flexShrink: 0,
+        borderRight: `1px solid ${t.border}`,
+        padding: "28px 20px",
+        overflowY: "auto",
+        display: "flex",
+        flexDirection: "column",
+        gap: 22,
+        background: t.surface,
       }}>
-        <button
-          onClick={onBack}
-          style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "0 2px" }}
-        >
-          ←
-        </button>
-        <span style={{ fontSize: 11, color: "#333", letterSpacing: 3, fontWeight: 700 }}>YEAR ZERO</span>
-        <span style={{ color: "#1f1f1f", fontSize: 14 }}>·</span>
-        <span style={{ fontSize: 11, color: "#444", letterSpacing: 1 }}>
-          ◆ Project 100 ·{" "}
-          <span style={{ color: "#00FF88", fontWeight: 700 }}>{daysLeft} days left</span>
-        </span>
-        <div style={{ marginLeft: "auto", fontSize: 9, color: "#2a2a2a", letterSpacing: 1 }}>
-          DAY {Math.min(elapsed + 1, 84)} OF 84
+
+        {/* Section label */}
+        <div style={{ fontSize: 9, color: t.subtext, letterSpacing: 3, fontWeight: 600 }}>
+          HABITS / GOALS
         </div>
-      </div>
 
-      {/* ── Two-panel layout ─────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-
-        {/* ── LEFT PANEL ─────────────────────────────────────────────────────── */}
-        <div style={{
-          width: 260,
-          flexShrink: 0,
-          borderRight: "1px solid #1a1a1a",
-          padding: "24px 16px",
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 20,
-        }}>
-
-          {/* Big days remaining */}
-          <div>
-            <div style={{
-              fontSize: 80,
-              fontWeight: 800,
-              color: "#00FF88",
-              lineHeight: 1,
-              fontFamily: "system-ui",
-              letterSpacing: -2,
-            }}>
-              {daysLeft}
-            </div>
-            <div style={{ fontSize: 9, color: "#3a3a3a", letterSpacing: 3, marginTop: 6 }}>DAYS LEFT</div>
+        {/* Big days remaining */}
+        <div>
+          <div style={{
+            fontSize: 72,
+            fontWeight: 800,
+            color: "#00FF88",
+            lineHeight: 1,
+            fontFamily: "system-ui",
+            letterSpacing: -2,
+          }}>
+            {daysLeft}
           </div>
+          <div style={{ fontSize: 9, color: t.subtext, letterSpacing: 2, marginTop: 4 }}>days left</div>
+        </div>
 
-          {/* Stat boxes */}
-          <div style={{ display: "flex", gap: 6 }}>
-            <StatBox label="STREAK"  value={streak}        color="#FFD700" />
-            <StatBox label="DONE %"  value={`${donePct}%`} color="#00FF88" />
-            <StatBox label="HABITS"  value={habits.length}  color="#A78BFA" />
-          </div>
+        {/* Stat boxes */}
+        <div style={{ display: "flex", gap: 8 }}>
+          <StatBox label="STREAK"  value={streak}        color="#FFD700" t={t} />
+          <StatBox label="DONE"    value={`${donePct}%`} color="#00FF88" t={t} />
+          <StatBox label="HABITS"  value={habits.length}  color="#A78BFA" t={t} />
+        </div>
 
-          {/* Habit list */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            {habits.map((h, hi) => {
-              let done = 0;
-              for (let d = 0; d < elapsed; d++) if ((wheel[`${hi}-${d}`] || 0) === 1) done++;
-              const pct = elapsed ? Math.round(done / elapsed * 100) : 0;
+        {/* Habit list */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {habits.map((h, hi) => {
+            let done = 0;
+            for (let d = 0; d < elapsed; d++) if ((wheel[`${hi}-${d}`] || 0) === 1) done++;
+            const pct = elapsed ? Math.round(done / elapsed * 100) : 0;
 
-              return (
-                <div
-                  key={h.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    background: "#111",
-                    borderRadius: 8,
-                    overflow: "hidden",
-                    border: "1px solid #1a1a1a",
-                  }}
-                >
+            return (
+              <div key={h.id} style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  background: t.habitBg,
+                  borderRadius: 8,
+                  border: `1px solid ${t.habitBorder}`,
+                  overflow: "hidden",
+                }}>
                   {/* Colour bar */}
                   <div style={{ width: 4, alignSelf: "stretch", background: h.color, flexShrink: 0 }} />
 
                   {/* Label / edit */}
-                  <div style={{ flex: 1, padding: "10px 10px 10px 10px", minWidth: 0 }}>
+                  <div style={{ flex: 1, padding: "10px 10px", minWidth: 0 }}>
                     {editingId === h.id ? (
                       <input
                         autoFocus
@@ -262,9 +280,9 @@ export default function Project100({ session, onBack }) {
                           width: "100%",
                           background: "transparent",
                           border: "none",
-                          borderBottom: "1px solid #333",
-                          color: "#fff",
-                          fontSize: 11,
+                          borderBottom: `1px solid ${t.border}`,
+                          color: t.text,
+                          fontSize: 12,
                           outline: "none",
                           fontFamily: "inherit",
                         }}
@@ -274,13 +292,13 @@ export default function Project100({ session, onBack }) {
                         onClick={() => { setEditingId(h.id); setEditVal(h.label); }}
                         title="Click to rename"
                         style={{
-                          fontSize: 11,
+                          fontSize: 12,
                           cursor: "pointer",
                           display: "block",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
-                          color: "#ccc",
+                          color: t.habitLabel,
                         }}
                       >
                         {h.label}
@@ -299,7 +317,7 @@ export default function Project100({ session, onBack }) {
                     style={{
                       background: "none",
                       border: "none",
-                      color: "#2a2a2a",
+                      color: t.deleteColor,
                       cursor: "pointer",
                       fontSize: 16,
                       padding: "0 8px 0 0",
@@ -310,171 +328,175 @@ export default function Project100({ session, onBack }) {
                     ×
                   </button>
                 </div>
-              );
-            })}
 
-            <button
-              onClick={addHabit}
-              style={{
-                padding: "9px",
-                background: "transparent",
-                border: "1px dashed #1f1f1f",
-                borderRadius: 8,
-                color: "#2a2a2a",
-                fontSize: 10,
-                cursor: "pointer",
-                letterSpacing: 2,
-                marginTop: 2,
-              }}
-            >
-              + ADD HABIT
-            </button>
-          </div>
-
-          {/* Legend */}
-          <div style={{ borderTop: "1px solid #1a1a1a", paddingTop: 14 }}>
-            <div style={{ fontSize: 8, color: "#222", letterSpacing: 2, marginBottom: 10 }}>
-              CLICK SEGMENTS TO LOG
-            </div>
-            {[
-              { label: "EMPTY",  color: "#1e1e1e", border: "#2a2a2a" },
-              { label: "DONE",   color: "#00FF88", border: "#00FF88" },
-              { label: "MISSED", color: "#cc2200", border: "#cc2200" },
-            ].map(s => (
-              <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <div style={{ width: 12, height: 12, borderRadius: 3, background: s.color, border: `1px solid ${s.border}`, flexShrink: 0 }} />
-                <span style={{ fontSize: 9, color: "#333", letterSpacing: 1 }}>{s.label}</span>
+                {/* Progress bar */}
+                <div style={{ height: 3, background: t.border, borderRadius: "0 0 3px 3px", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${pct}%`, background: h.color, transition: "width 0.3s ease" }} />
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
+            );
+          })}
 
-        {/* ── RIGHT PANEL — Fan wheel ─────────────────────────────────────────── */}
-        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-          <div style={{
-            position: "absolute",
-            top: 12,
-            left: 16,
-            fontSize: 8,
-            color: "#1f1f1f",
-            letterSpacing: 2,
-          }}>
-            84-DAY HABIT WHEEL · CLICK ANY SEGMENT TO LOG
-          </div>
-
-          <svg
-            viewBox={`0 0 ${VB} ${VB}`}
-            width="100%"
-            height="100%"
-            preserveAspectRatio="xMinYMax meet"
-            style={{ display: "block" }}
+          <button
+            onClick={addHabit}
+            style={{
+              marginTop: 4,
+              padding: "9px",
+              background: "transparent",
+              border: `1px dashed ${t.addBorder}`,
+              borderRadius: 8,
+              color: t.addColor,
+              fontSize: 10,
+              cursor: "pointer",
+              letterSpacing: 2,
+              fontFamily: "system-ui",
+            }}
           >
-            {/* ── Rings ──────────────────────────────────────────────────────── */}
-            {habits.map((habit, hi) => {
-              const innerR = INNER_BASE + hi * (ringW + RING_GAP);
-              const outerR = innerR + ringW;
-
-              return Array.from({ length: TOTAL_DAYS }, (_, d) => {
-                const state = wheel[`${hi}-${d}`] || 0;
-                const { start, end } = dayAngles(d);
-                const fill = state === 1 ? habit.color
-                           : state === 2 ? "#cc2200"
-                           : "#1a1a1a";
-
-                return (
-                  <path
-                    key={`${hi}-${d}`}
-                    d={segPath(innerR, outerR, start, end)}
-                    fill={fill}
-                    onClick={() => handleSeg(hi, d)}
-                    style={{ cursor: "pointer" }}
-                  >
-                    <title>{habit.label} · Day {d + 1}</title>
-                  </path>
-                );
-              });
-            })}
-
-            {/* ── Day labels along outer edge (every 7 + today) ─────────────── */}
-            {Array.from({ length: TOTAL_DAYS }, (_, d) => {
-              const isToday = d === todayIdx;
-              // show every 7th: days 7, 14, 21 ... 84 (d=6,13,...83)
-              if ((d + 1) % 7 !== 0 && !isToday) return null;
-              const midDeg = FAN_END - (d + 0.5) * SEG_ANGLE;
-              const pt     = ptOn(labelR, midDeg);
-              return (
-                <text
-                  key={`lbl-${d}`}
-                  x={pt.x}
-                  y={pt.y}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize={isToday ? 12 : 10}
-                  fill={isToday ? "#ffffff" : "#2e2e2e"}
-                  fontFamily="system-ui"
-                  fontWeight={isToday ? 700 : 400}
-                >
-                  {d + 1}
-                </text>
-              );
-            })}
-
-            {/* ── Today marker — white tick just outside outermost ring ──────── */}
-            {elapsed > 0 && (() => {
-              const midDeg = FAN_END - (todayIdx + 0.5) * SEG_ANGLE;
-              const p1 = ptOn(outerEdge + 5, midDeg);
-              const p2 = ptOn(outerEdge + LABEL_PAD - 6, midDeg);
-              return (
-                <line
-                  x1={p1.x} y1={p1.y}
-                  x2={p2.x} y2={p2.y}
-                  stroke="#ffffff"
-                  strokeWidth={2.5}
-                  strokeLinecap="round"
-                />
-              );
-            })()}
-
-            {/* ── Ring labels (habit number) on inner arc ────────────────────── */}
-            {habits.map((habit, hi) => {
-              const innerR = INNER_BASE + hi * (ringW + RING_GAP);
-              const midR   = innerR + ringW / 2;
-              // Place label at the very end of the fan (day 84 side, near 270°)
-              const labelDeg = FAN_START + SEG_ANGLE * 0.7;
-              const pt = ptOn(midR, labelDeg);
-              return (
-                <text
-                  key={`rlbl-${hi}`}
-                  x={pt.x}
-                  y={pt.y}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize={Math.min(14, ringW * 0.12)}
-                  fill={habit.color}
-                  fontFamily="system-ui"
-                  fontWeight={700}
-                  opacity={0.5}
-                >
-                  {hi + 1}
-                </text>
-              );
-            })}
-
-            {/* ── Inner hub label ────────────────────────────────────────────── */}
-            <text
-              x={CX + INNER_BASE * 0.35}
-              y={CY - INNER_BASE * 0.35}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontSize={9}
-              fill="#222"
-              fontFamily="system-ui"
-              letterSpacing={1}
-            >
-              {elapsed}d
-            </text>
-          </svg>
+            + ADD HABIT
+          </button>
         </div>
+
+        {/* Legend */}
+        <div style={{ borderTop: `1px solid ${t.legendBorder}`, paddingTop: 14, marginTop: "auto" }}>
+          <div style={{ fontSize: 8, color: t.legendLabel, letterSpacing: 2, marginBottom: 10 }}>
+            CLICK SEGMENTS TO LOG
+          </div>
+          {[
+            { label: "Empty",  color: t.emptyFill, border: t.border },
+            { label: "Done",   color: "#00FF88",   border: "#00FF88" },
+            { label: "Missed", color: "#cc2200",   border: "#cc2200" },
+          ].map(s => (
+            <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <div style={{ width: 12, height: 12, borderRadius: 3, background: s.color, border: `1px solid ${s.border}`, flexShrink: 0 }} />
+              <span style={{ fontSize: 10, color: t.subtext, letterSpacing: 0.5 }}>{s.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── RIGHT PANEL — Fan wheel ─────────────────────────────────────────── */}
+      <div style={{ flex: 1, overflow: "hidden", position: "relative", background: t.bg }}>
+        <div style={{
+          position: "absolute",
+          top: 14,
+          left: 18,
+          fontSize: 9,
+          color: t.logHint,
+          letterSpacing: 2,
+          fontFamily: "system-ui",
+        }}>
+          84-DAY HABIT WHEEL
+        </div>
+
+        <svg
+          viewBox={`0 0 ${VB} ${VB}`}
+          width="100%"
+          height="100%"
+          preserveAspectRatio="xMinYMax meet"
+          style={{ display: "block" }}
+        >
+          {/* ── Rings ──────────────────────────────────────────────────────── */}
+          {habits.map((habit, hi) => {
+            const innerR = INNER_BASE + hi * (ringW + RING_GAP);
+            const outerR = innerR + ringW;
+
+            return Array.from({ length: TOTAL_DAYS }, (_, d) => {
+              const state = wheel[`${hi}-${d}`] || 0;
+              const { start, end } = dayAngles(d);
+              const fill = state === 1 ? habit.color
+                         : state === 2 ? "#cc2200"
+                         : t.emptyFill;
+
+              return (
+                <path
+                  key={`${hi}-${d}`}
+                  d={segPath(innerR, outerR, start, end)}
+                  fill={fill}
+                  onClick={() => handleSeg(hi, d)}
+                  style={{ cursor: "pointer" }}
+                >
+                  <title>{habit.label} · Day {d + 1}</title>
+                </path>
+              );
+            });
+          })}
+
+          {/* ── Day labels along outer edge (every 7 + today) ─────────────── */}
+          {Array.from({ length: TOTAL_DAYS }, (_, d) => {
+            const isToday = d === todayIdx;
+            if ((d + 1) % 7 !== 0 && !isToday) return null;
+            const midDeg = FAN_END - (d + 0.5) * SEG_ANGLE;
+            const pt     = ptOn(labelR, midDeg);
+            return (
+              <text
+                key={`lbl-${d}`}
+                x={pt.x}
+                y={pt.y}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontSize={isToday ? 13 : 11}
+                fill={isToday ? t.todayLbl : t.labelDot}
+                fontFamily="system-ui"
+                fontWeight={isToday ? 700 : 400}
+              >
+                {d + 1}
+              </text>
+            );
+          })}
+
+          {/* ── Today marker — tick just outside outermost ring ────────────── */}
+          {elapsed > 0 && (() => {
+            const midDeg = FAN_END - (todayIdx + 0.5) * SEG_ANGLE;
+            const p1 = ptOn(outerEdge + 5,  midDeg);
+            const p2 = ptOn(outerEdge + LABEL_PAD - 8, midDeg);
+            return (
+              <line
+                x1={p1.x} y1={p1.y}
+                x2={p2.x} y2={p2.y}
+                stroke={t.todayLbl}
+                strokeWidth={2.5}
+                strokeLinecap="round"
+              />
+            );
+          })()}
+
+          {/* ── Ring habit-number labels ───────────────────────────────────── */}
+          {habits.map((habit, hi) => {
+            const innerR = INNER_BASE + hi * (ringW + RING_GAP);
+            const midR   = innerR + ringW / 2;
+            const labelDeg = FAN_START + SEG_ANGLE * 0.7;
+            const pt = ptOn(midR, labelDeg);
+            return (
+              <text
+                key={`rlbl-${hi}`}
+                x={pt.x}
+                y={pt.y}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontSize={Math.min(16, ringW * 0.12)}
+                fill={habit.color}
+                fontFamily="system-ui"
+                fontWeight={700}
+                opacity={0.5}
+              >
+                {hi + 1}
+              </text>
+            );
+          })}
+
+          {/* ── Inner hub label ────────────────────────────────────────────── */}
+          <text
+            x={CX + INNER_BASE * 0.38}
+            y={CY - INNER_BASE * 0.38}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fontSize={10}
+            fill={t.subtext}
+            fontFamily="system-ui"
+          >
+            {elapsed}d
+          </text>
+        </svg>
       </div>
     </div>
   );

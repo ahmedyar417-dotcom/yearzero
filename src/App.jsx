@@ -793,6 +793,10 @@ function DayPicker({ selectedDay, onSelect }) {
 }
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
+const P100_START    = new Date("2026-04-08T00:00:00");
+const P100_DEADLINE = new Date("2026-07-01T00:00:00");
+const P100_TOTAL    = 84;
+
 export default function App() {
   const today = new Date();
   const start = new Date(today.getFullYear(), 0, 1);
@@ -800,6 +804,10 @@ export default function App() {
   const currentQ = Math.min(Math.ceil(weekNum / 13), 4);
   const dayLabel = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][today.getDay()];
   const WEEK_KEY = getWeekKey();
+  // P100 progress for nav indicator
+  const p100Today = new Date(); p100Today.setHours(0,0,0,0);
+  const p100DaysLeft = Math.max(0, Math.ceil((P100_DEADLINE - p100Today) / 86400000));
+  const p100Elapsed  = Math.min(P100_TOTAL, Math.max(0, Math.floor((p100Today - P100_START) / 86400000)));
 
   // ── State ───────────────────────────────────────────────────────────────────
   const [session,         setSession]         = useState(undefined);
@@ -819,6 +827,8 @@ export default function App() {
   const [reloadTick,      setReloadTick]      = useState(0); // increment to trigger reload from localStorage
   const [showP100,        setShowP100]        = useState(false);
   const [showLiveStats,   setShowLiveStats]   = useState(false);
+  const [activeTab,       setActiveTab]       = useState(() => ls.get("yz-active-tab") || "goals");
+  const [isDark,          setIsDark]          = useState(() => ls.get("yz-dark-mode") !== false);
   // Editable config state
   const [sections,  setSections]  = useState(() => ls.get("yz-sections") || DEFAULT_SECTIONS);
   const [sched,     setSched]     = useState(() => ls.get("yz-sched")    || DEFAULT_SCHED);
@@ -1130,19 +1140,28 @@ export default function App() {
   const pastWeeks = Object.keys(history).filter(k => k !== WEEK_KEY).length;
 
   // ── Loading / auth gates ─────────────────────────────────────────────────────
-  if (session === undefined) return <div style={{ minHeight: "100vh", background: "#0a0a0a" }} />;
+  if (session === undefined) return <div style={{ minHeight: "100vh", background: isDark ? "#0a0a0a" : "#f2f1ed" }} />;
   if (!session) return <AuthScreen />;
+
+  // ── Theme ────────────────────────────────────────────────────────────────────
+  const nav = isDark ? {
+    bg: "#111", border: "#1e1e1e", logo: "#fff", tabText: "#555", tabActive: "#fff",
+    rightText: "#555", accent: "#2563eb",
+  } : {
+    bg: "#fff", border: "#e8e8e8", logo: "#1a1a1a", tabText: "#888", tabActive: "#1a1a1a",
+    rightText: "#aaa", accent: "#2563eb",
+  };
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "#fff", fontFamily: "'DM Mono', monospace" }}>
+    <div style={{ minHeight: "100vh", background: isDark ? "#0a0a0a" : "#f2f1ed", color: isDark ? "#fff" : "#1a1a1a", fontFamily: "'DM Mono', monospace" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #0a0a0a; overscroll-behavior: none; }
+        body { overscroll-behavior: none; }
         ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: #111; }
-        ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 2px; }
         button { font-family: inherit; transition: opacity 0.15s; }
         button:hover { opacity: 0.82; }
         button:active { opacity: 0.65; transform: scale(0.97); }
@@ -1152,123 +1171,143 @@ export default function App() {
       {showHistory && <HistoryModal history={history} sections={sections} onClose={() => setShowHistory(false)} />}
       {supabaseData !== null && <SupabaseInspectorModal data={supabaseData} onClose={() => setSupabaseData(null)} />}
 
-      {showP100 && <Project100 session={session} onBack={() => setShowP100(false)} />}
-      {showLiveStats && (
-        <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "#fff", fontFamily: "'DM Mono', monospace" }}>
-          <div style={{ borderBottom: "1px solid #1a1a1a", padding: "14px 20px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, background: "#0a0a0a", zIndex: 100 }}>
-            <button onClick={() => setShowLiveStats(false)} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "5px 12px", cursor: "pointer", fontSize: 10, color: "#A78BFA", letterSpacing: 1 }}>
-              ← BACK
-            </button>
-            <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 18, letterSpacing: 3, color: "#A78BFA" }}>LIVE STATS</span>
-          </div>
-          <HealthPanel session={session} />
-          <div style={{ borderTop: "1px solid #1a1a1a", margin: "0 20px" }} />
-          <OutreachPanel />
-        </div>
-      )}
-      {(showP100 || showLiveStats) && null}
-      {!showP100 && !showLiveStats && <>
-
-
       {/* Save flash */}
       <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 5000, background: "#141414", border: "1px solid #00FF8855", borderRadius: 10, padding: "9px 16px", fontSize: 11, color: "#00FF88", letterSpacing: 1, transition: "opacity 0.3s", opacity: saveFlash ? 1 : 0, pointerEvents: "none" }}>
         ✓ Saved
       </div>
 
-      {/* Top bar */}
-      <div style={{ borderBottom: "1px solid #1a1a1a", padding: "14px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: "#0a0a0a", zIndex: 100 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <InlineEdit
-            value={dashTitle}
-            onSave={saveDashTitle}
-            editMode={editMode}
-            style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 24, letterSpacing: 3, color: "#fff" }}
-          />
-          <span style={{ background: "#00FF8812", border: "1px solid #00FF8830", borderRadius: 6, padding: "3px 9px", fontSize: 10, color: "#00FF88", letterSpacing: 2 }}>Q{currentQ}</span>
-          <button onClick={() => setShowHistory(true)} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#555", letterSpacing: 1 }}>
-            HISTORY {pastWeeks > 0 ? `· ${pastWeeks}wk` : ""}
-          </button>
-          {/* Auto-sync status indicator */}
-          <div style={{ display: "flex", alignItems: "center", gap: 5 }} title={syncDot === "synced" ? "Synced" : syncDot === "syncing" ? "Syncing…" : "Sync failed — tap to retry"}>
-            <div style={{
-              width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-              background: syncDot === "synced" ? "#00FF88" : syncDot === "syncing" ? "#FFD700" : "#FF3B3B",
-              boxShadow: syncDot === "synced" ? "0 0 5px #00FF8866" : syncDot === "syncing" ? "0 0 5px #FFD70066" : "0 0 6px #FF3B3B88",
-              transition: "background 0.4s, box-shadow 0.4s",
-              animation: syncDot === "syncing" ? "yz-pulse-dot 1s ease-in-out infinite" : "none",
-              cursor: syncDot === "failed" ? "pointer" : "default",
-            }} onClick={syncDot === "failed" ? handleRetrySync : undefined} />
-            {syncDot === "failed" && (
-              <button onClick={handleRetrySync} style={{ background: "#FF3B3B14", border: "1px solid #FF3B3B44", borderRadius: 5, padding: "3px 8px", fontSize: 9, color: "#FF6B6B", cursor: "pointer", letterSpacing: 1 }}>
-                RETRY
-              </button>
-            )}
-          </div>
-          <button onClick={handlePull} disabled={pulling} style={{ background: pullStatus === "✓ PULLED" ? "#00FF8818" : "#181818", border: `1px solid ${pullStatus === "✓ PULLED" ? "#00FF8844" : pullStatus === "✗ FAILED" ? "#FF3B3B44" : "#FF6B3533"}`, borderRadius: 7, padding: "4px 11px", cursor: pulling ? "not-allowed" : "pointer", fontSize: 10, color: pullStatus === "✓ PULLED" ? "#00FF88" : pullStatus === "✗ FAILED" ? "#FF6B6B" : pulling ? "#555" : "#FF6B35", letterSpacing: 1 }}>
-            {pulling ? "PULLING..." : pullStatus || "PULL"}
-          </button>
-          <button onClick={() => { setEditMode(m => !m); setForcePushStatus(null); }} style={{ background: editMode ? "#FF6B3518" : "#181818", border: `1px solid ${editMode ? "#FF6B3544" : "#252525"}`, borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: editMode ? "#FF6B35" : "#444", letterSpacing: 1 }}>
-            {editMode ? "✓ DONE EDITING" : "EDIT"}
-          </button>
-          <button onClick={handleCheckSupabase} style={{ background: "#FFD70014", border: "1px solid #FFD70033", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#FFD700", letterSpacing: 1 }}>
-            CHECK DB
-          </button>
-          {editMode && (
-            <button onClick={handleForcePush} disabled={forcePushing} style={{ background: forcePushStatus === "✓ DONE" ? "#00FF8818" : "#FF3B3B14", border: `1px solid ${forcePushStatus === "✓ DONE" ? "#00FF8844" : forcePushStatus === "✗ FAILED" ? "#FF3B3B88" : "#FF3B3B44"}`, borderRadius: 7, padding: "4px 11px", cursor: forcePushing ? "not-allowed" : "pointer", fontSize: 10, color: forcePushStatus === "✓ DONE" ? "#00FF88" : forcePushing ? "#555" : "#FF6B6B", letterSpacing: 1 }}>
-              {forcePushing ? "PUSHING..." : forcePushStatus || "FORCE PUSH"}
-            </button>
-          )}
-          <button onClick={() => supabase.auth.signOut()} style={{ background: "#181818", border: "1px solid #252525", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#444", letterSpacing: 1 }}>
-            SIGN OUT
-          </button>
-          <button onClick={() => setShowP100(true)} style={{ background: "#FF6B3518", border: "1px solid #FF6B3555", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#FF6B35", letterSpacing: 1 }}>
-            ◉ P100
-          </button>
-          <button onClick={() => setShowLiveStats(true)} style={{ background: "#A78BFA18", border: "1px solid #A78BFA55", borderRadius: 7, padding: "4px 11px", cursor: "pointer", fontSize: 10, color: "#A78BFA", letterSpacing: 1 }}>
-            ◈ LIVE STATS
-          </button>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 8, color: selectedDay === todayStr() ? "#444" : selectedDay > todayStr() ? "#00D4FF" : "#A78BFA", letterSpacing: 2 }}>
-              {selectedDay === todayStr() ? "TODAY" : selectedDay > todayStr() ? "PLANNING" : "EDITING"}
-            </div>
-            <div style={{ fontSize: 11, color: selectedDay === todayStr() ? "#aaa" : selectedDay > todayStr() ? "#00D4FF" : "#A78BFA" }}>
-              {dayLabel.toUpperCase()} · WK {weekNum}
-            </div>
-          </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 8, color: "#444", letterSpacing: 2 }}>DAILY</div>
-            <div style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 20, color: topColor, letterSpacing: 1 }}>{dailyPct}%</div>
-          </div>
-          <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Ring pct={dailyPct} color={topColor} size={42} />
-            <span style={{ position: "absolute", fontSize: 8, color: "#fff", fontWeight: 700 }}>{dailyDone}/{allDaily.length}</span>
-          </div>
-          {/* Per-category rings */}
-          <div style={{ width: 1, height: 40, background: "#1e1e1e", flexShrink: 0 }} />
-          {Object.entries(sections).map(([sectionKey, section]) => {
-            const sectionChecks = checks[sectionKey] || [];
-            const sectionActuals = actuals[sectionKey] || [];
-            const dd = Array.isArray(sectionChecks) ? sectionChecks.filter(Boolean).length : Object.values(sectionChecks).filter(Boolean).length;
-            const wh = section.weekly.filter((w, i) => {
-              const a = sectionActuals[i];
-              return a !== null && a !== undefined && a >= w.target;
-            }).length;
-            const total = section.daily.length + section.weekly.length;
-            const pct = total > 0 ? Math.round(((dd + wh) / total) * 100) : 0;
+      {/* ── New Nav ─────────────────────────────────────────────────────────── */}
+      <nav style={{
+        background: nav.bg,
+        borderBottom: `1px solid ${nav.border}`,
+        padding: "0 24px",
+        display: "flex",
+        alignItems: "center",
+        height: 52,
+        position: "sticky",
+        top: 0,
+        zIndex: 200,
+        gap: 0,
+      }}>
+        {/* Logo */}
+        <span style={{
+          fontSize: 15,
+          fontWeight: 700,
+          color: nav.logo,
+          letterSpacing: -0.3,
+          fontFamily: "system-ui, -apple-system, sans-serif",
+          flexShrink: 0,
+          marginRight: 28,
+        }}>
+          Year Zero
+        </span>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", alignItems: "stretch", flex: 1, height: "100%" }}>
+          {[
+            { key: "goals",   label: "Goals"   },
+            { key: "habits",  label: "Habits"  },
+            { key: "track",   label: "Track"   },
+            { key: "journal", label: "Journal" },
+            { key: "plan",    label: "Plan"    },
+          ].map(({ key, label }) => {
+            const isActive = activeTab === key;
             return (
-              <div key={sectionKey} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Ring pct={pct} color={section.color} size={34} />
-                  <span style={{ position: "absolute", fontSize: 7, color: "#fff", fontWeight: 700 }}>{pct}%</span>
-                </div>
-                <span style={{ fontSize: 9, color: section.color, lineHeight: 1 }}>{section.icon}</span>
-              </div>
+              <button
+                key={key}
+                onClick={() => { setActiveTab(key); ls.set("yz-active-tab", key); }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  borderBottom: isActive ? `2px solid ${nav.accent}` : "2px solid transparent",
+                  padding: "0 16px",
+                  fontSize: 13,
+                  fontWeight: isActive ? 600 : 400,
+                  color: isActive ? nav.tabActive : nav.tabText,
+                  cursor: "pointer",
+                  fontFamily: "system-ui, -apple-system, sans-serif",
+                  letterSpacing: 0.1,
+                  height: "100%",
+                  transition: "color 0.15s",
+                }}
+              >
+                {label}
+              </button>
             );
           })}
         </div>
-      </div>
+
+        {/* Right side */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+          {/* P100 indicator */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 10, color: nav.rightText, fontFamily: "system-ui" }}>◆ Project 100</span>
+            <span style={{ fontSize: 10, color: "#00c057", fontWeight: 600, fontFamily: "system-ui" }}>{p100DaysLeft}d left</span>
+            <div style={{ width: 56, height: 4, background: isDark ? "#222" : "#e5e5e5", borderRadius: 2, overflow: "hidden", flexShrink: 0 }}>
+              <div style={{ width: `${(p100Elapsed / P100_TOTAL) * 100}%`, height: "100%", background: nav.accent, borderRadius: 2 }} />
+            </div>
+          </div>
+
+          {/* Sync dot */}
+          <div
+            style={{
+              width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+              background: syncDot === "synced" ? "#00c057" : syncDot === "syncing" ? "#f59e0b" : "#ef4444",
+              animation: syncDot === "syncing" ? "yz-pulse-dot 1s ease-in-out infinite" : "none",
+              cursor: syncDot === "failed" ? "pointer" : "default",
+            }}
+            onClick={syncDot === "failed" ? handleRetrySync : undefined}
+            title={syncDot === "synced" ? "Synced" : syncDot === "syncing" ? "Syncing…" : "Sync failed"}
+          />
+
+          {/* Utility buttons */}
+          <button onClick={handlePull} disabled={pulling} style={{ background: "none", border: `1px solid ${isDark ? "#2a2a2a" : "#e0e0e0"}`, borderRadius: 6, padding: "4px 9px", cursor: pulling ? "not-allowed" : "pointer", fontSize: 9, color: nav.tabText, letterSpacing: 1, fontFamily: "system-ui" }}>
+            {pulling ? "..." : "PULL"}
+          </button>
+          <button onClick={() => { setEditMode(m => !m); setForcePushStatus(null); }} style={{ background: editMode ? "#FF6B3518" : "none", border: `1px solid ${editMode ? "#FF6B3555" : isDark ? "#2a2a2a" : "#e0e0e0"}`, borderRadius: 6, padding: "4px 9px", cursor: "pointer", fontSize: 9, color: editMode ? "#FF6B35" : nav.tabText, letterSpacing: 1, fontFamily: "system-ui" }}>
+            {editMode ? "DONE" : "EDIT"}
+          </button>
+          {editMode && (
+            <button onClick={handleForcePush} disabled={forcePushing} style={{ background: "none", border: `1px solid ${isDark ? "#FF3B3B44" : "#fca5a5"}`, borderRadius: 6, padding: "4px 9px", cursor: "pointer", fontSize: 9, color: "#ef4444", letterSpacing: 1, fontFamily: "system-ui" }}>
+              {forcePushing ? "..." : "PUSH"}
+            </button>
+          )}
+
+          {/* Theme toggle */}
+          <button
+            onClick={() => { const next = !isDark; setIsDark(next); ls.set("yz-dark-mode", next); }}
+            style={{ background: isDark ? "#222" : "#f0f0f0", border: "none", borderRadius: 6, padding: "5px 9px", cursor: "pointer", fontSize: 13, lineHeight: 1 }}
+            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {isDark ? "☀" : "☾"}
+          </button>
+
+          {/* Sign out */}
+          <button onClick={() => supabase.auth.signOut()} style={{ background: "none", border: `1px solid ${isDark ? "#2a2a2a" : "#e0e0e0"}`, borderRadius: 6, padding: "4px 9px", cursor: "pointer", fontSize: 9, color: nav.tabText, letterSpacing: 1, fontFamily: "system-ui" }}>
+            OUT
+          </button>
+        </div>
+      </nav>
+
+      {/* ── Tab content ─────────────────────────────────────────────────────── */}
+
+      {activeTab === "track" && <Project100 session={session} darkMode={isDark} />}
+
+      {activeTab === "habits" && (
+        <div style={{ background: isDark ? "#0a0a0a" : "#f2f1ed", minHeight: "calc(100vh - 52px)" }}>
+          <HealthPanel session={session} />
+          <div style={{ borderTop: `1px solid ${isDark ? "#1a1a1a" : "#e5e5e5"}`, margin: "0 20px" }} />
+          <OutreachPanel />
+        </div>
+      )}
+
+      {(activeTab === "journal" || activeTab === "plan") && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "calc(100vh - 52px)", color: isDark ? "#2a2a2a" : "#ccc", fontFamily: "system-ui", fontSize: 14, letterSpacing: 1 }}>
+          Coming soon
+        </div>
+      )}
+
+      {activeTab === "goals" && <>
 
       {/* Quarters */}
       <div style={{ padding: "12px 20px 0", display: "flex", gap: 6 }}>
