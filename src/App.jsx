@@ -492,7 +492,7 @@ function WeekCard({ item, color, onClick, editMode, onUpdateLabel, onUpdateTarge
 }
 
 // ─── GoalCard ─────────────────────────────────────────────────────────────────
-function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editMode, onUpdate, onUpdateChecks, onUpdateActuals, onReorder, viewDayOffset, gt, isDark }) {
+function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editMode, onUpdate, onUpdateChecks, onUpdateActuals, onReorder, onDelete, viewDayOffset, gt, isDark }) {
   const s = section;
   const [modal, setModal] = useState(null);
   const G = gt || { card: "#111", cardBorder: "#1e1e1e", surface: "#181818", surfaceBorder: "#2a2a2a", text: "#fff", subtext: "#555", dim: "#444", muted: "#2a2a2a", rowSep: "#1a1a1a", taskText: "#bbb", emptyCheck: "#3a3a3a", ringTrack: "#1e1e1e", progTrack: "#1a1a1a" };
@@ -556,6 +556,7 @@ function GoalCard({ sectionKey, section, checks, onCheck, actuals, onSave, editM
                   <div style={{ display: "flex", gap: 3 }}>
                     <button onClick={() => onReorder(-1)} style={{ width: 20, height: 20, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 4, color: G.subtext, fontSize: 9, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>▲</button>
                     <button onClick={() => onReorder(1)}  style={{ width: 20, height: 20, background: G.surface, border: `1px solid ${G.surfaceBorder}`, borderRadius: 4, color: G.subtext, fontSize: 9, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>▼</button>
+                    <button onClick={onDelete} title="Delete this goal card" style={{ width: 20, height: 20, background: "#ef444415", border: "1px solid #ef444440", borderRadius: 4, color: "#ef4444", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, fontWeight: 700 }}>×</button>
                   </div>
                 )}
                 <InlineEdit value={s.icon} onSave={v => onUpdate(sec => ({ ...sec, icon: v }))} editMode={editMode}
@@ -1035,6 +1036,16 @@ export default function App() {
     });
   };
 
+  const deleteSection = (key) => {
+    setSections(prev => {
+      const next = { ...prev };
+      delete next[key];
+      ls.set("yz-sections", next);
+      syncToSupabase(session?.user?.id, "yz-sections", next);
+      return next;
+    });
+  };
+
   const handleReorderSection = (key, dir) => {
     const keys = Object.keys(sections);
     const idx = keys.indexOf(key);
@@ -1422,6 +1433,7 @@ export default function App() {
             onUpdateChecks={(newArr) => handleUpdateChecks(key, newArr)}
             onUpdateActuals={(newArr) => handleUpdateActuals(key, newArr)}
             onReorder={(dir) => handleReorderSection(key, dir)}
+            onDelete={() => deleteSection(key)}
             viewDayOffset={Math.round((new Date(selectedDay + "T00:00:00") - new Date(todayStr() + "T00:00:00")) / 86400000)}
             gt={gt}
             isDark={isDark}
