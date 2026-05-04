@@ -1,7 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+
+const FONT = '"Inter", system-ui, -apple-system, sans-serif';
+const CHART_DAYS = 14;
 
 const msToHm = (ms) => {
-  if (ms == null) return "—";
+  if (ms == null || ms === 0) return "—";
   const h = Math.floor(ms / 3600000);
   const m = Math.floor((ms % 3600000) / 60000);
   return `${h}h ${m}m`;
@@ -11,9 +14,9 @@ const fmt = (v, unit = "", decimals = 0) =>
   v == null ? "—" : `${typeof v === "number" ? v.toFixed(decimals) : v}${unit}`;
 
 const recoveryColor = (score) => {
-  if (score == null) return "#aaa";
-  if (score >= 67) return "#22c55e";
-  if (score >= 34) return "#fbbf24";
+  if (score == null) return "#e5e7eb";
+  if (score >= 67) return "#4ade80";
+  if (score >= 34) return "#facc15";
   return "#fb923c";
 };
 
@@ -25,11 +28,11 @@ const recoveryLabel = (score) => {
 };
 
 const strainColor = (strain) => {
-  if (strain == null) return "#aaa";
+  if (strain == null) return "#a3a3a3";
   if (strain >= 18) return "#fb923c";
-  if (strain >= 14) return "#fbbf24";
-  if (strain >= 10) return "#a78bfa";
-  return "#34d399";
+  if (strain >= 14) return "#facc15";
+  if (strain >= 10) return "#c084fc";
+  return "#4ade80";
 };
 
 const HEALTH_KEY = () => `yz-health-${new Date().toISOString().slice(0, 10)}`;
@@ -50,49 +53,108 @@ const ls = {
   },
 };
 
-/** Decorative multi-line chart — colors aligned with WHOOP-style dashboard */
-function Sparkline({ datasets, legend, legendMuted = "#6b7280", w = 150, h = 54 }) {
-  const pad = { top: 4, bottom: 4, left: 2, right: 2 };
+/** Normalizes numeric series to [0,1] for chart Y; independent min/max per series. */
+function normalizeY(values) {
+  const valid = values.filter((x) => x != null && !Number.isNaN(x));
+  if (!valid.length) return values.map(() => null);
+  const min = Math.min(...valid);
+  const max = Math.max(...valid);
+  const span = max - min || 1;
+  return values.map((x) => (x == null || Number.isNaN(x) ? null : (x - min) / span));
+}
+
+/** Simple linear regression y on index for trend overlay */
+function linearTrend(values) {
+  const pts = values.map((y, i) => ({ i, y })).filter((p) => p.y != null && !Number.isNaN(p.y));
+  if (pts.length < 2) return values.map(() => null);
+  const n = pts.length;
+  let sumX = 0,
+    sumY = 0,
+    sumXY = 0,
+    sumXX = 0;
+  for (const p of pts) {
+    sumX += p.i;
+    sumY += p.y;
+    sumXY += p.i * p.y;
+    sumXX += p.i * p.i;
+  }
+  const denom = n * sumXX - sumX * sumX || 1;
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+  return values.map((_, i) => slope * i + intercept);
+}
+
+/** Cubic-smooth path; breaks at nulls so gaps don’t interpolate falsely. */
+function smoothPath(normYs, w, h, pad) {
   const iw = w - pad.left - pad.right;
   const ih = h - pad.top - pad.bottom;
+  const n = normYs.length;
+  if (n < 1) return "";
 
-  const makePath = (values) => {
-    const n = values.length;
-    return values.reduce((acc, v, i) => {
-      const x = pad.left + (i / (n - 1)) * iw;
-      const y = pad.top + (1 - v) * ih;
-      if (i === 0) return `M ${x},${y}`;
-      const px = pad.left + ((i - 1) / (n - 1)) * iw;
-      const pv = values[i - 1];
-      const py = pad.top + (1 - pv) * ih;
-      const cpx = (px + x) / 2;
-      return `${acc} C ${cpx},${py} ${cpx},${y} ${x},${y}`;
-    }, "");
-  };
+  let acc = "";
+  let prevNonNull = null;
+  normYs.forEach((nv, i) => {
+    if (nv == null) {
+      prevNonNull = null;
+      return;
+    }
+    const x = pad.left + (i / Math.max(1, n - 1)) * iw;
+    const y = pad.top + (1 - nv) * ih;
+    if (prevNonNull == null) {
+      acc += `${acc ? " " : ""}M ${x},${y}`;
+      prevNonNull = { x, y, i };
+      return;
+    }
+    const px = prevNonNull.x;
+    const py = prevNonNull.y;
+    const cpx = (px + x) / 2;
+    acc += ` C ${cpx},${py} ${cpx},${y} ${x},${y}`;
+    prevNonNull = { x, y, i };
+  });
+  return acc;
+}
+
+/**
+ * Multi-series line chart from raw numeric arrays (same length).
+ * Each series normalized independently so scales stay faithful to trends.
+ */
+function DataChart({ datasets, legend, legendMuted = "#737373", w = 168, h = 58, pad = { top: 5, bottom: 4, left: 2, right: 2 } }) {
+  if (!datasets?.length) return null;
+
+  const normalized = datasets.map((ds) => ({
+    ...ds,
+    norm: normalizeY(ds.values),
+  }));
 
   return (
-    <div>
+    <div style={{ flexShrink: 0 }}>
       <svg width={w} height={h} style={{ display: "block", overflow: "visible" }}>
-        {datasets.map((ds, i) => (
-          <path
-            key={i}
-            d={makePath(ds.values)}
-            fill="none"
-            stroke={ds.color}
-            strokeWidth={1.6}
-            strokeDasharray={ds.dashed ? "4 3" : undefined}
-            opacity={0.92}
-          />
-        ))}
+        {normalized.map((ds, idx) => {
+          const d = smoothPath(ds.norm, w, h, pad);
+          if (!d) return null;
+          return (
+            <path
+              key={idx}
+              d={d}
+              fill="none"
+              stroke={ds.color}
+              strokeWidth={ds.dashed ? 1.25 : 1.75}
+              strokeDasharray={ds.dashed ? "5 4" : undefined}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={0.95}
+            />
+          );
+        })}
       </svg>
-      {legend && (
-        <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+      {legend?.length > 0 && (
+        <div style={{ display: "flex", gap: 7, marginTop: 6, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: w + 40 }}>
           {legend.map((l) => (
-            <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 3 }}>
-              <svg width={12} height={3} style={{ overflow: "visible" }}>
-                <line x1={0} y1={1.5} x2={12} y2={1.5} stroke={l.color} strokeWidth={1.6} strokeDasharray={l.dashed ? "3 2" : undefined} />
+            <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <svg width={14} height={3} style={{ overflow: "visible" }}>
+                <line x1={0} y1={1.5} x2={14} y2={1.5} stroke={l.color} strokeWidth={1.75} strokeDasharray={l.dashed ? "4 3" : undefined} />
               </svg>
-              <span style={{ fontSize: 7, color: legendMuted, letterSpacing: 0.4 }}>{l.label}</span>
+              <span style={{ fontSize: 7, color: legendMuted, letterSpacing: 0.35, fontWeight: 500 }}>{l.label}</span>
             </div>
           ))}
         </div>
@@ -101,25 +163,64 @@ function Sparkline({ datasets, legend, legendMuted = "#6b7280", w = 150, h = 54 
   );
 }
 
+/** Weight + dashed linear trend (same Y scale as weight). */
+function BodyWeightChart({ weights, w = 168, h = 58 }) {
+  const pad = { top: 5, bottom: 4, left: 2, right: 2 };
+  const trendRaw = linearTrend(weights);
+  const vals = weights.filter((y) => y != null && !Number.isNaN(y));
+  const min = vals.length ? Math.min(...vals) : 0;
+  const max = vals.length ? Math.max(...vals) : 1;
+  const span = max - min || 1;
+  const normW = weights.map((y) => (y == null || Number.isNaN(y) ? null : (y - min) / span));
+  const normT = trendRaw.map((y) => (y == null || Number.isNaN(y) ? null : (y - min) / span));
+  const dW = smoothPath(normW, w, h, pad);
+  const dT = smoothPath(normT, w, h, pad);
+
+  return (
+    <div style={{ flexShrink: 0 }}>
+      <svg width={w} height={h} style={{ display: "block", overflow: "visible" }}>
+        {dW && <path d={dW} fill="none" stroke="#38bdf8" strokeWidth={1.75} strokeLinecap="round" opacity={0.95} />}
+        {dT && (
+          <path d={dT} fill="none" stroke="#737373" strokeWidth={1.35} strokeDasharray="5 4" strokeLinecap="round" opacity={0.85} />
+        )}
+      </svg>
+      <div style={{ display: "flex", gap: 10, marginTop: 6, justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <svg width={14} height={3}>
+            <line x1={0} y1={1.5} x2={14} y2={1.5} stroke="#38bdf8" strokeWidth={1.75} />
+          </svg>
+          <span style={{ fontSize: 7, color: "#737373", fontWeight: 500 }}>WEIGHT</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <svg width={14} height={3}>
+            <line x1={0} y1={1.5} x2={14} y2={1.5} stroke="#737373" strokeWidth={1.35} strokeDasharray="4 3" />
+          </svg>
+          <span style={{ fontSize: 7, color: "#737373", fontWeight: 500 }}>TREND</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DonutChart({ protein, carbs, fat }) {
-  const r = 26,
-    cx = 36,
-    cy = 36;
+  const r = 28,
+    cx = 40,
+    cy = 40;
   const circ = 2 * Math.PI * r;
   const total = (protein || 0) + (carbs || 0) + (fat || 0);
 
   const segments = [
     { value: protein || 0, color: "#fb923c", label: "PROTEIN" },
     { value: carbs || 0, color: "#3b82f6", label: "CARBS" },
-    { value: fat || 0, color: "#fbbf24", label: "FAT" },
+    { value: fat || 0, color: "#facc15", label: "FAT" },
   ];
 
   let cumPct = 0;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <svg width={72} height={72} style={{ flexShrink: 0 }}>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+      <svg width={80} height={80} style={{ flexShrink: 0 }}>
         {total === 0 ? (
-          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#2a2a2a" strokeWidth={9} />
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#2a2a2a" strokeWidth={10} />
         ) : (
           segments.map((s, i) => {
             const pct = s.value / total;
@@ -134,7 +235,7 @@ function DonutChart({ protein, carbs, fat }) {
                 r={r}
                 fill="none"
                 stroke={s.color}
-                strokeWidth={9}
+                strokeWidth={10}
                 strokeDasharray={`${dash} ${circ}`}
                 strokeDashoffset={offset}
                 style={{ transform: "rotate(-90deg)", transformOrigin: `${cx}px ${cy}px` }}
@@ -143,11 +244,11 @@ function DonutChart({ protein, carbs, fat }) {
           })
         )}
       </svg>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5, paddingTop: 4 }}>
         {segments.map((s) => (
-          <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: s.color, opacity: total === 0 ? 0.25 : 1 }} />
-            <span style={{ fontSize: 8, color: "#9ca3af", letterSpacing: 0.5 }}>
+          <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: s.color, opacity: total === 0 ? 0.2 : 1 }} />
+            <span style={{ fontSize: 8, color: "#a3a3a3", letterSpacing: 0.4, fontWeight: 500 }}>
               {s.label} {total > 0 ? Math.round((s.value / total) * 100) : 0}%
             </span>
           </div>
@@ -162,26 +263,26 @@ function HeroCard({ label, value, lines = [], gradient }) {
     <div
       style={{
         background: gradient,
-        borderRadius: 12,
-        padding: "18px 20px",
-        flex: 1,
-        minWidth: 0,
+        borderRadius: 10,
+        padding: "16px 18px 18px",
+        flex: "1 1 22%",
+        minWidth: 200,
         display: "flex",
         flexDirection: "column",
-        gap: 4,
-        boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
+        gap: 3,
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 12px 40px rgba(0,0,0,0.45)",
       }}
     >
-      <span style={{ fontSize: 8, color: "rgba(255,255,255,0.5)", letterSpacing: 2.2, fontWeight: 700 }}>{label.toUpperCase()}</span>
+      <span style={{ fontSize: 8, color: "rgba(255,255,255,0.52)", letterSpacing: 2.5, fontWeight: 700, fontFamily: FONT }}>{label.toUpperCase()}</span>
       <span
         style={{
-          fontSize: 46,
+          fontSize: 48,
           fontWeight: 800,
           color: "#fff",
-          lineHeight: 1.02,
-          fontFamily: "system-ui, -apple-system, sans-serif",
-          marginTop: 2,
-          letterSpacing: -1,
+          lineHeight: 1,
+          fontFamily: FONT,
+          marginTop: 4,
+          letterSpacing: -1.5,
         }}
       >
         {value}
@@ -190,10 +291,12 @@ function HeroCard({ label, value, lines = [], gradient }) {
         <span
           key={i}
           style={{
-            fontSize: i === 0 ? 11 : 10,
-            color: i === 0 ? "rgba(255,255,255,0.82)" : "rgba(255,255,255,0.48)",
-            marginTop: i === 0 ? 4 : 1,
-            lineHeight: 1.35,
+            fontSize: i === 0 ? 11.5 : 10,
+            fontWeight: i === 0 ? 500 : 400,
+            color: i === 0 ? "rgba(255,255,255,0.88)" : "rgba(255,255,255,0.5)",
+            marginTop: i === 0 ? 6 : 2,
+            lineHeight: 1.4,
+            fontFamily: FONT,
           }}
         >
           {line}
@@ -205,9 +308,11 @@ function HeroCard({ label, value, lines = [], gradient }) {
 
 function Metric({ label, value, color, muted, valueDefault = "#e5e7eb" }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <span style={{ fontSize: 8, color: muted || "#6b7280", letterSpacing: 1.2, textTransform: "uppercase", fontWeight: 600 }}>{label}</span>
-      <span style={{ fontSize: 14, fontWeight: 600, color: color ?? valueDefault, fontFamily: "system-ui, -apple-system, sans-serif" }}>{value}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <span style={{ fontSize: 8, color: muted || "#737373", letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 600, fontFamily: FONT }}>
+        {label}
+      </span>
+      <span style={{ fontSize: 14, fontWeight: 600, color: color ?? valueDefault, fontFamily: FONT }}>{value}</span>
     </div>
   );
 }
@@ -216,122 +321,76 @@ function PanelIcon({ color }) {
   return (
     <div
       style={{
-        width: 28,
-        height: 28,
+        width: 26,
+        height: 26,
         borderRadius: "50%",
-        background: `linear-gradient(145deg, ${color}55, ${color}18)`,
-        border: `1px solid ${color}44`,
+        background: `radial-gradient(circle at 30% 25%, ${color}66, ${color}14 65%, transparent)`,
+        border: `1px solid ${color}40`,
         flexShrink: 0,
       }}
     />
   );
 }
 
-function Panel({ title, main, mainSub, mainColor, metrics, chart, iconColor = "#6366f1", surface, border, titleColor, subColor, dividerColor, metricMuted, valueDefault = "#e5e7eb" }) {
+function Panel({ title, main, mainSub, mainColor, metrics, chart, iconColor = "#6366f1", surface, border, titleColor, subColor, dividerColor, metricMuted, valueDefault = "#e5e7eb", minh }) {
   return (
     <div
       style={{
-        background: surface || "#141414",
-        border: `1px solid ${border || "#252525"}`,
-        borderRadius: 12,
-        padding: "18px 18px 16px",
+        background: surface || "#161616",
+        border: `1px solid ${border || "#2a2a2a"}`,
+        borderRadius: 10,
+        padding: "14px 16px 14px",
         display: "flex",
         flexDirection: "column",
-        gap: 12,
-        minHeight: 0,
+        gap: 10,
+        minHeight: minh || 236,
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-        <span style={{ fontSize: 8, color: titleColor || "#525252", letterSpacing: 2.4, fontWeight: 700 }}>{title.toUpperCase()}</span>
+        <span style={{ fontSize: 8, color: titleColor || "#525252", letterSpacing: 2.8, fontWeight: 700, fontFamily: FONT }}>{title.toUpperCase()}</span>
         <PanelIcon color={iconColor} />
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 40, fontWeight: 800, color: mainColor || "#fff", lineHeight: 1, fontFamily: "system-ui, -apple-system, sans-serif", letterSpacing: -1 }}>
-            {main}
-          </div>
-          {mainSub && <div style={{ fontSize: 11, color: subColor || "#737373", marginTop: 6, lineHeight: 1.35 }}>{mainSub}</div>}
+          <div style={{ fontSize: 42, fontWeight: 800, color: mainColor || "#fafafa", lineHeight: 1, fontFamily: FONT, letterSpacing: -1.2 }}>{main}</div>
+          {mainSub && (
+            <div style={{ fontSize: 11.5, color: subColor || "#737373", marginTop: 5, lineHeight: 1.35, fontWeight: 400, fontFamily: FONT }}>{mainSub}</div>
+          )}
         </div>
-        {chart && <div style={{ flexShrink: 0, marginTop: -4 }}>{chart}</div>}
+        {chart && <div style={{ flexShrink: 0 }}>{chart}</div>}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", paddingTop: 14, borderTop: `1px solid ${dividerColor || "#252525"}` }}>
-        {metrics.map(({ label, value, color }) => (
-          <Metric key={label} label={label} value={value} color={color} muted={metricMuted} valueDefault={valueDefault} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "11px 14px", paddingTop: 12, marginTop: "auto", borderTop: `1px solid ${dividerColor || "#2a2a2a"}` }}>
+        {metrics.map(({ label, value, color }, idx) => (
+          <Metric key={`${title}-${idx}-${label}`} label={label} value={value} color={color} muted={metricMuted} valueDefault={valueDefault} />
         ))}
       </div>
     </div>
   );
 }
 
-const SPARKLINES = {
-  recovery: {
-    datasets: [
-      { values: [0.42, 0.36, 0.4, 0.3, 0.34, 0.28, 0.32], color: "#fbbf24" },
-      { values: [0.62, 0.64, 0.59, 0.65, 0.62, 0.64, 0.61], color: "#60a5fa" },
-      { values: [0.72, 0.68, 0.74, 0.7, 0.76, 0.71, 0.74], color: "#a78bfa" },
-      { values: [0.91, 0.92, 0.9, 0.93, 0.91, 0.92, 0.94], color: "#34d399" },
-    ],
-    legend: [
-      { label: "RECOVERY", color: "#fbbf24" },
-      { label: "RHR", color: "#60a5fa" },
-      { label: "HRV", color: "#a78bfa" },
-      { label: "SpO2", color: "#34d399" },
-    ],
-  },
-  pulse: {
-    datasets: [{ values: [0.5, 0.5, 0.52, 0.5, 0.12, 0.92, 0.48, 0.44, 0.5, 0.5, 0.52, 0.5, 0.12, 0.92, 0.48, 0.44, 0.5], color: "#2dd4bf" }],
-    legend: [{ label: "PULSE TRACE", color: "#2dd4bf" }],
-  },
-  sleep: {
-    datasets: [
-      { values: [0.72, 0.68, 0.73, 0.7, 0.75, 0.71, 0.73], color: "#fb923c" },
-      { values: [0.44, 0.47, 0.43, 0.5, 0.46, 0.49, 0.47], color: "#3b82f6" },
-      { values: [0.28, 0.32, 0.3, 0.35, 0.29, 0.33, 0.31], color: "#a78bfa" },
-    ],
-    legend: [
-      { label: "CORE", color: "#fb923c" },
-      { label: "DEEP", color: "#3b82f6" },
-      { label: "REM", color: "#a78bfa" },
-    ],
-  },
-  body: {
-    datasets: [
-      { values: [0.58, 0.6, 0.56, 0.59, 0.55, 0.57, 0.54], color: "#60a5fa" },
-      { values: [0.59, 0.57, 0.55, 0.53, 0.51, 0.49, 0.47], color: "#737373", dashed: true },
-    ],
-    legend: [
-      { label: "WEIGHT", color: "#60a5fa" },
-      { label: "TREND", color: "#737373", dashed: true },
-    ],
-  },
-  activity: {
-    datasets: [
-      { values: [0.38, 0.55, 0.45, 0.62, 0.4, 0.58, 0.5], color: "#fb923c" },
-      { values: [0.28, 0.44, 0.36, 0.5, 0.32, 0.46, 0.4], color: "#60a5fa" },
-      { values: [0.22, 0.38, 0.3, 0.45, 0.26, 0.4, 0.34], color: "#a78bfa" },
-      { values: [0.3, 0.33, 0.36, 0.39, 0.42, 0.45, 0.48], color: "#525252", dashed: true },
-    ],
-    legend: [
-      { label: "STEPS", color: "#fb923c" },
-      { label: "ENERGY", color: "#60a5fa" },
-      { label: "STRAIN", color: "#a78bfa" },
-      { label: "TREND", color: "#525252", dashed: true },
-    ],
-  },
-};
-
 const CAL_GOAL = 1900;
 const PROTEIN_GOAL_G = 180;
-const SLEEP_NEED_MS = 8 * 3600000 + 38 * 60000;
+
+function trimSeries(arr, n = CHART_DAYS) {
+  if (!arr?.length) return [];
+  return arr.slice(-n);
+}
+
+function mergeAppleSteps(whoopDays, applePoints) {
+  const byDate = new Map((applePoints || []).map((p) => [p.date, p]));
+  return whoopDays.map((d) => byDate.get(d.cycleEndDate)?.steps ?? null);
+}
 
 export default function HealthPanel({ darkMode = true }) {
   const [data, setData] = useState(() => ls.get(HEALTH_KEY()) || {});
+  const [series, setSeries] = useState(() => ls.get("yz-whoop-series-v1"));
+  const [appleHist, setAppleHist] = useState(() => ls.get("yz-health-history-v1"));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
+  const loadSnapshots = () => {
     const saved = ls.get(HEALTH_KEY());
     if (saved) setData(saved);
     fetch("/api/health-today")
@@ -344,6 +403,32 @@ export default function HealthPanel({ darkMode = true }) {
         }
       })
       .catch(() => {});
+  };
+
+  const loadSeries = () => {
+    fetch("/api/whoop-series")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.days?.length) {
+          ls.set("yz-whoop-series-v1", json);
+          setSeries(json);
+        }
+      })
+      .catch(() => {});
+    fetch("/api/health-history")
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.points?.length) {
+          ls.set("yz-health-history-v1", json);
+          setAppleHist(json);
+        }
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    loadSnapshots();
+    loadSeries();
   }, []);
 
   const fetchWhoop = async () => {
@@ -360,6 +445,19 @@ export default function HealthPanel({ darkMode = true }) {
       const merged = { ...ls.get(HEALTH_KEY()), ...todayJson, whoop: whoopJson };
       ls.set(HEALTH_KEY(), merged);
       setData(merged);
+
+      const seriesRes = await fetch("/api/whoop-series");
+      const seriesJson = await seriesRes.json();
+      if (seriesJson.days?.length) {
+        ls.set("yz-whoop-series-v1", seriesJson);
+        setSeries(seriesJson);
+      }
+      const histRes = await fetch("/api/health-history");
+      const histJson = await histRes.json();
+      if (histJson.points?.length) {
+        ls.set("yz-health-history-v1", histJson);
+        setAppleHist(histJson);
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -370,37 +468,143 @@ export default function HealthPanel({ darkMode = true }) {
   const w = data?.whoop;
   const a = data?.apple;
 
-  const recScore = w?.recovery?.score;
+  const days = trimSeries(series?.days || []);
+  const applePoints = appleHist?.points || [];
+
+  const chartSlice = useMemo(() => {
+    const d = trimSeries(series?.days || []);
+    const stepsAligned = mergeAppleSteps(d, applePoints);
+    const weightsAligned = d.map((row) => {
+      const hit = applePoints.find((p) => p.date === row.cycleEndDate);
+      return hit?.weight_lb ?? null;
+    });
+
+    const recoveryChart = {
+      datasets: [
+        { values: d.map((x) => x.recoveryScore), color: "#facc15", label: "RECOVERY" },
+        { values: d.map((x) => x.rhr), color: "#60a5fa", label: "RHR" },
+        { values: d.map((x) => x.hrv), color: "#c084fc", label: "HRV" },
+        { values: d.map((x) => x.spo2), color: "#4ade80", label: "SpO2" },
+      ],
+      legend: [
+        { label: "RECOVERY", color: "#facc15" },
+        { label: "RHR", color: "#60a5fa" },
+        { label: "HRV", color: "#c084fc" },
+        { label: "SpO2", color: "#4ade80" },
+      ],
+    };
+
+    const pulseChart = {
+      datasets: [{ values: d.map((x) => x.avgHr), color: "#2dd4bf", label: "AVG HR" }],
+      legend: [{ label: "PULSE TRACE", color: "#2dd4bf" }],
+    };
+
+    const sleepChart = {
+      datasets: [
+        { values: d.map((x) => (x.lightMs != null ? x.lightMs / 3600000 : null)), color: "#fb923c", label: "CORE" },
+        { values: d.map((x) => (x.deepMs != null ? x.deepMs / 3600000 : null)), color: "#3b82f6", label: "DEEP" },
+        { values: d.map((x) => (x.remMs != null ? x.remMs / 3600000 : null)), color: "#a78bfa", label: "REM" },
+      ],
+      legend: [
+        { label: "CORE", color: "#fb923c" },
+        { label: "DEEP", color: "#3b82f6" },
+        { label: "REM", color: "#a78bfa" },
+      ],
+    };
+
+    const strainTrend = linearTrend(d.map((x) => x.strain));
+    const activityChart = {
+      datasets: [
+        { values: stepsAligned.map((s) => (s != null ? s / 10000 : null)), color: "#fb923c", label: "STEPS" },
+        { values: d.map((x) => (x.energyKcal != null ? x.energyKcal / 400 : null)), color: "#38bdf8", label: "ENERGY" },
+        { values: d.map((x) => x.strain), color: "#c084fc", label: "STRAIN" },
+        { values: strainTrend, color: "#737373", dashed: true, label: "TREND" },
+      ],
+      legend: [
+        { label: "STEPS", color: "#fb923c" },
+        { label: "ENERGY", color: "#38bdf8" },
+        { label: "STRAIN", color: "#c084fc" },
+        { label: "TREND", color: "#737373", dashed: true },
+      ],
+    };
+
+    return {
+      recoveryChart,
+      pulseChart,
+      sleepChart,
+      activityChart,
+      weightsAligned,
+      stepsAligned,
+    };
+  }, [series, appleHist]);
+
+  const latest = days[days.length - 1] || {};
+  const summary = series?.summary || {};
+
+  const recScore = w?.recovery?.score ?? latest.recoveryScore;
   const recColor = recoveryColor(recScore);
-  const strainVal = w?.strain;
+  const strainVal = w?.strain ?? latest.strain;
   const sColor = strainColor(strainVal);
 
   const whoopTime = w?.fetchedAt ? new Date(w.fetchedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : null;
   const appleTime = a?.fetchedAt ? new Date(a.fetchedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : null;
 
-  const totalSleepMs = w?.sleep?.totalMs;
-  const sleepSubNight = totalSleepMs != null ? `Night ${msToHm(totalSleepMs)} · Naps —` : "Night — · Naps —";
-  const sleepDebt = w?.sleep?.debtMs;
+  const totalSleepMs = w?.sleep?.totalMs ?? latest.sleepTotalMs;
+  const mainSleepMs = latest.sleepMainMs ?? totalSleepMs;
+  const napMs = latest.sleepNapMs;
+
+  const napLabel = napMs != null && napMs > 0 ? msToHm(napMs) : "—";
+  const sleepSubNight = mainSleepMs != null ? `Night ${msToHm(mainSleepMs)} · Naps ${napLabel}` : "Night — · Naps —";
+
+  const sleepDebt = w?.sleep?.debtMs ?? latest.sleepDebtMs;
+  const sleepNeedMs = latest.sleepNeedMs;
+
+  const deltaHVs7d =
+    summary.sleepVs7dHours != null
+      ? `${summary.sleepVs7dHours <= 0 ? "" : "+"}${summary.sleepVs7dHours.toFixed(1)}h vs 7D`
+      : "— vs 7D";
+
   const sleepLine2 =
-    sleepDebt != null
-      ? `${msToHm(sleepDebt)} debt vs 7D · ${msToHm(SLEEP_NEED_MS)} needed`
-      : w?.sleep?.efficiency != null
-        ? `${fmt(w.sleep.efficiency, "%")} efficiency · ${msToHm(SLEEP_NEED_MS)} target`
-        : `— vs 7D · ${msToHm(SLEEP_NEED_MS)} needed`;
+    sleepDebt != null && sleepNeedMs != null
+      ? `${deltaHVs7d} · ${msToHm(sleepNeedMs)} needed`
+      : sleepNeedMs != null
+        ? `${deltaHVs7d} · ${msToHm(sleepNeedMs)} needed`
+        : `${deltaHVs7d}`;
 
   const weightLb = a?.weight_lb;
   const bf = a?.body_fat_pct;
   const vsPlanLb = a?.vs_plan_lb;
+  const startW = a?.start_weight_lb;
+  const goalW = a?.goal_weight_lb;
+
   const heroWeightLine1 =
-    vsPlanLb != null
-      ? `${vsPlanLb >= 0 ? "+" : ""}${vsPlanLb.toFixed(1)} lb vs plan`
-      : weightLb != null
-        ? "— vs plan"
-        : "— vs plan";
+    vsPlanLb != null ? `${vsPlanLb >= 0 ? "+" : ""}${vsPlanLb.toFixed(1)} lb vs plan` : weightLb != null ? "— vs plan" : "— vs plan";
+
+  const firstAppleDate = applePoints[0]?.date ? new Date(applePoints[0].date + "T12:00:00") : null;
+  const weeksLogging =
+    firstAppleDate != null ? Math.max(1, (Date.now() - firstAppleDate.getTime()) / (7 * 86400000)) : null;
+  const paceLbPerWk =
+    startW != null && weightLb != null && weeksLogging != null ? (startW - weightLb) / weeksLogging : null;
+
   const heroWeightLine2 =
-    bf != null ? `${bf.toFixed(1)}% est. body fat · sync pace from logs` : "Body composition from Apple Health";
+    bf != null && paceLbPerWk != null && Number.isFinite(paceLbPerWk)
+      ? `${bf.toFixed(1)}% est. body fat · ${paceLbPerWk.toFixed(1)} lb/wk loss pace`
+      : bf != null
+        ? `${bf.toFixed(1)}% est. body fat`
+        : "Body composition from Apple Health";
 
   const todayShort = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+  const recoveryPts =
+    summary.recoveryDelta30 != null ? `${summary.recoveryDelta30 >= 0 ? "+" : ""}${Math.round(summary.recoveryDelta30)} pts vs 30D` : "— vs 30D";
+  const heroRecoveryLines = [recoveryPts, `Cycle · ${latest.dayLabel || todayShort}`];
+
+  const rhrPts =
+    summary.rhrDelta30 != null ? `${summary.rhrDelta30 >= 0 ? "+" : ""}${summary.rhrDelta30.toFixed(0)} bpm vs 30D` : "— vs 30D";
+  const heroRhrLines = [
+    rhrPts,
+    w?.recovery?.hrv != null ? `${w.recovery.hrv} ms HRV · WHOOP resting heart rate` : latest.hrv != null ? `${latest.hrv} ms HRV · WHOOP resting heart rate` : "WHOOP resting heart rate",
+  ];
 
   const calIn = a?.calories != null ? Math.round(a.calories) : 0;
   const protIn = a?.protein_g != null ? Math.round(a.protein_g) : 0;
@@ -410,7 +614,7 @@ export default function HealthPanel({ darkMode = true }) {
   const dexaRmr = a?.rmr_kcal != null ? Math.round(a.rmr_kcal) : null;
 
   const theme = darkMode
-    ? { bg: "#0f0f0f", headerSub: "#737373", panel: "#141414", sparkLegend: "#6b7280", border: "#252525", panelTitle: "#525252", metricMuted: "#6b7280", finePrint: "#737373", valueDefault: "#e5e7eb" }
+    ? { bg: "#0f0f0f", headerSub: "#737373", panel: "#161616", sparkLegend: "#737373", border: "#2a2a2a", panelTitle: "#525252", metricMuted: "#737373", finePrint: "#737373", valueDefault: "#e5e7eb" }
     : { bg: "#ecebe8", headerSub: "#64748b", panel: "#ffffff", sparkLegend: "#94a3b8", border: "#e2e2df", panelTitle: "#78716c", metricMuted: "#78716c", finePrint: "#57534e", valueDefault: "#1c1917" };
 
   const panelSkin = {
@@ -421,30 +625,74 @@ export default function HealthPanel({ darkMode = true }) {
     dividerColor: theme.border,
     metricMuted: theme.metricMuted,
     valueDefault: theme.valueDefault,
+    minh: 248,
   };
 
-  const heroRecoveryLines = ["— vs 30D", `Day ${todayShort}`];
+  const strain7d = summary.strainSum7d != null ? summary.strainSum7d.toFixed(1) : "—";
 
-  const heroRhrLines = [
-    "— vs 30D",
-    w?.recovery?.hrv != null ? `${w.recovery.hrv} ms HRV · WHOOP resting heart rate` : "WHOOP resting heart rate",
-  ];
+  const lostLb = startW != null && weightLb != null ? startW - weightLb : null;
+  const progressPct =
+    startW != null && goalW != null && weightLb != null && startW !== goalW
+      ? Math.min(100, Math.max(0, Math.round(((startW - weightLb) / (startW - goalW)) * 100)))
+      : null;
+
+  const respRate = latest.respiratoryRate;
+
+  const needDisplay = sleepNeedMs != null ? msToHm(sleepNeedMs) : msToHm(8 * 3600000 + 38 * 60000);
+
+  const recoveryChartEl =
+    days.length >= 2 ? (
+      <DataChart {...chartSlice.recoveryChart} legendMuted={theme.sparkLegend} w={172} h={58} />
+    ) : (
+      <div style={{ width: 172, height: 58, flexShrink: 0 }} />
+    );
+
+  const pulseChartEl = days.length >= 2 ? <DataChart {...chartSlice.pulseChart} legendMuted={theme.sparkLegend} w={172} h={58} /> : <div style={{ width: 172, height: 58 }} />;
+
+  const sleepChartEl = days.length >= 2 ? <DataChart {...chartSlice.sleepChart} legendMuted={theme.sparkLegend} w={172} h={58} /> : <div style={{ width: 172, height: 58 }} />;
+
+  const activityChartEl =
+    days.length >= 2 ? <DataChart {...chartSlice.activityChart} legendMuted={theme.sparkLegend} w={172} h={58} /> : <div style={{ width: 172, height: 58 }} />;
+
+  const bodyWeights = trimSeries(chartSlice.weightsAligned || []);
+  const bodyChartEl =
+    bodyWeights.filter((x) => x != null).length >= 2 ? (
+      <BodyWeightChart weights={bodyWeights} w={172} h={58} />
+    ) : (
+      <div style={{ width: 172, height: 58 }} />
+    );
+
+  const bodyMainSub =
+    paceLbPerWk != null && Number.isFinite(paceLbPerWk)
+      ? `${paceLbPerWk.toFixed(1)} lb/wk loss pace`
+      : bf != null
+        ? `${bf.toFixed(1)}% body fat`
+        : "Sync Apple Health";
+
+  if (!darkMode) {
+    return (
+      <div style={{ padding: 24, fontFamily: FONT, color: "#1a1a1a", background: theme.bg, minHeight: "calc(100vh - 52px)" }}>
+        <p style={{ fontSize: 13 }}>Use dark mode for the health dashboard.</p>
+      </div>
+    );
+  }
 
   return (
     <div
       style={{
-        padding: "20px 22px 28px",
-        maxWidth: 1280,
+        padding: "18px 20px 32px",
+        maxWidth: 1240,
         margin: "0 auto",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        background: theme.bg,
+        fontFamily: FONT,
+        background: "#0f0f0f",
         minHeight: "calc(100vh - 52px)",
+        color: "#fafafa",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
         <div>
-          <div style={{ fontSize: 9, color: theme.panelTitle, letterSpacing: 3, fontWeight: 700 }}>HEALTH</div>
-          <div style={{ fontSize: 9, color: theme.headerSub, letterSpacing: 0.6, marginTop: 4 }}>
+          <div style={{ fontSize: 9, color: "#525252", letterSpacing: 3.2, fontWeight: 700 }}>HEALTH</div>
+          <div style={{ fontSize: 9, color: theme.headerSub, letterSpacing: 0.5, marginTop: 5, fontWeight: 400 }}>
             {whoopTime ? `WHOOP ${whoopTime}` : "WHOOP NOT SYNCED"}
             {appleTime ? ` · APPLE ${appleTime}` : " · APPLE NOT SYNCED"}
           </div>
@@ -453,15 +701,16 @@ export default function HealthPanel({ darkMode = true }) {
           onClick={fetchWhoop}
           disabled={loading}
           style={{
-            background: loading ? "#1a1a1a" : "rgba(45, 212, 191, 0.12)",
+            background: loading ? "#1a1a1a" : "rgba(45, 212, 191, 0.1)",
             border: `1px solid ${loading ? "#333" : "rgba(45, 212, 191, 0.35)"}`,
             borderRadius: 8,
-            padding: "9px 20px",
+            padding: "10px 22px",
             cursor: loading ? "not-allowed" : "pointer",
             fontSize: 9,
             color: loading ? "#525252" : "#2dd4bf",
-            letterSpacing: 1.6,
+            letterSpacing: 1.8,
             fontWeight: 700,
+            fontFamily: FONT,
           }}
         >
           {loading ? "SYNCING…" : "SYNC WHOOP"}
@@ -469,68 +718,68 @@ export default function HealthPanel({ darkMode = true }) {
       </div>
 
       {error && (
-        <div style={{ background: "rgba(251, 146, 60, 0.08)", border: "1px solid rgba(251, 146, 60, 0.25)", borderRadius: 10, padding: "10px 16px", fontSize: 11, color: "#fb923c", marginBottom: 16 }}>
+        <div style={{ background: "rgba(251, 146, 60, 0.08)", border: "1px solid rgba(251, 146, 60, 0.28)", borderRadius: 10, padding: "10px 16px", fontSize: 11, color: "#fb923c", marginBottom: 14, fontFamily: FONT }}>
           {error}
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
         <HeroCard
           label="Recovery Score"
           value={fmt(recScore)}
           lines={heroRecoveryLines}
-          gradient="linear-gradient(135deg, #6d28d9 0%, #4f46e5 45%, #2563eb 100%)"
+          gradient="linear-gradient(145deg, #6d28d9 0%, #5b21b6 38%, #3730a3 100%)"
         />
         <HeroCard
           label="Resting Heart Rate"
-          value={w?.recovery?.rhr != null ? `${w.recovery.rhr} bpm` : "—"}
+          value={w?.recovery?.rhr != null ? `${w.recovery.rhr} bpm` : latest.rhr != null ? `${latest.rhr} bpm` : "—"}
           lines={heroRhrLines}
-          gradient="linear-gradient(135deg, #0f766e 0%, #14b8a6 50%, #2dd4bf 100%)"
+          gradient="linear-gradient(145deg, #0f766e 0%, #14b8a6 42%, #2dd4bf 100%)"
         />
         <HeroCard
           label="Total Sleep"
           value={msToHm(totalSleepMs)}
           lines={[sleepSubNight, sleepLine2]}
-          gradient="linear-gradient(135deg, #14532d 0%, #166534 40%, #22c55e 100%)"
+          gradient="linear-gradient(145deg, #14532d 0%, #166534 42%, #16a34a 100%)"
         />
         <HeroCard
           label="Current Weight"
           value={weightLb != null ? `${weightLb.toFixed(1)} lb` : "—"}
           lines={[heroWeightLine1, heroWeightLine2]}
-          gradient="linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 50%, #38bdf8 100%)"
+          gradient="linear-gradient(145deg, #1e3a8a 0%, #1d4ed8 48%, #0ea5e9 100%)"
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, gridAutoRows: "minmax(248px, auto)" }}>
         <Panel
           {...panelSkin}
           title="Recovery"
           main={fmt(recScore)}
           mainSub={recoveryLabel(recScore)}
           mainColor={recColor}
-          iconColor="#a78bfa"
-          chart={<Sparkline {...SPARKLINES.recovery} legendMuted={theme.sparkLegend} />}
+          iconColor="#c084fc"
+          chart={recoveryChartEl}
           metrics={[
-            { label: "RHR", value: fmt(w?.recovery?.rhr, " bpm") },
-            { label: "HRV", value: fmt(w?.recovery?.hrv, " ms"), color: "#a78bfa" },
-            { label: "SpO2", value: fmt(w?.recovery?.spo2, "%", 1) },
-            { label: "Need", value: msToHm(SLEEP_NEED_MS), color: "#94a3b8" },
+            { label: "RHR", value: fmt(w?.recovery?.rhr ?? latest.rhr, " bpm") },
+            { label: "HRV", value: fmt(w?.recovery?.hrv ?? latest.hrv, " ms"), color: "#c084fc" },
+            { label: "SpO2", value: fmt(w?.recovery?.spo2 ?? latest.spo2, "%", 1) },
+            { label: "Need", value: needDisplay, color: "#a3a3a3" },
           ]}
         />
 
         <Panel
           {...panelSkin}
           title="Pulse"
-          main={w?.recovery?.rhr != null ? `${w.recovery.rhr} bpm` : "—"}
+          main={w?.recovery?.rhr != null ? `${w.recovery.rhr} bpm` : latest.rhr != null ? `${latest.rhr} bpm` : "—"}
           mainSub="WHOOP resting heart rate"
-          mainColor={darkMode ? "#ffffff" : "#0c0a09"}
+          mainColor="#fafafa"
           iconColor="#2dd4bf"
-          chart={<Sparkline {...SPARKLINES.pulse} w={160} h={56} legendMuted={theme.sparkLegend} />}
+          chart={pulseChartEl}
           metrics={[
-            { label: "Cycle avg", value: fmt(w?.avgHr, " bpm") },
-            { label: "Resp", value: "—" },
-            { label: "SpO2", value: fmt(w?.recovery?.spo2, "%", 1) },
-            { label: "Workout max", value: fmt(w?.maxHr, " bpm"), color: "#fb923c" },
+            { label: "Cycle avg", value: fmt(w?.avgHr ?? latest.avgHr, " bpm") },
+            { label: "Resp", value: respRate != null ? `${respRate.toFixed(1)}/min` : "—" },
+            { label: "SpO2", value: fmt(w?.recovery?.spo2 ?? latest.spo2, "%", 1) },
+            { label: "Workout max", value: fmt(w?.maxHr ?? latest.maxHr, " bpm"), color: "#fb923c" },
           ]}
         />
 
@@ -538,15 +787,15 @@ export default function HealthPanel({ darkMode = true }) {
           {...panelSkin}
           title="Sleep"
           main={msToHm(totalSleepMs)}
-          mainSub={w?.sleep?.efficiency != null ? `${fmt(w.sleep.efficiency, "%")} efficiency · ${sleepSubNight}` : sleepSubNight}
-          mainColor="#a78bfa"
+          mainSub={sleepSubNight}
+          mainColor="#c084fc"
           iconColor="#818cf8"
-          chart={<Sparkline {...SPARKLINES.sleep} legendMuted={theme.sparkLegend} />}
+          chart={sleepChartEl}
           metrics={[
-            { label: "Deep", value: msToHm(w?.sleep?.deepMs), color: "#3b82f6" },
-            { label: "REM", value: msToHm(w?.sleep?.remMs), color: "#a78bfa" },
-            { label: "Eff", value: fmt(w?.sleep?.efficiency, "%"), color: w?.sleep?.efficiency >= 85 ? "#34d399" : "#fbbf24" },
-            { label: "Debt", value: msToHm(w?.sleep?.debtMs), color: w?.sleep?.debtMs > 0 ? "#fb923c" : "#34d399" },
+            { label: "Deep", value: msToHm(w?.sleep?.deepMs ?? latest.deepMs), color: "#3b82f6" },
+            { label: "REM", value: msToHm(w?.sleep?.remMs ?? latest.remMs), color: "#a78bfa" },
+            { label: "Eff", value: fmt(w?.sleep?.efficiency ?? latest.sleepEfficiency, "%"), color: (w?.sleep?.efficiency ?? latest.sleepEfficiency) >= 85 ? "#4ade80" : "#facc15" },
+            { label: "Debt", value: msToHm(w?.sleep?.debtMs ?? latest.sleepDebtMs), color: (w?.sleep?.debtMs ?? latest.sleepDebtMs) > 0 ? "#fb923c" : "#4ade80" },
           ]}
         />
 
@@ -554,15 +803,15 @@ export default function HealthPanel({ darkMode = true }) {
           {...panelSkin}
           title="Body"
           main={weightLb != null ? `${weightLb.toFixed(1)} lb` : "—"}
-          mainSub={bf != null ? `${bf.toFixed(1)}% est. body fat` : "Sync Apple Health"}
-          mainColor="#fbbf24"
-          iconColor="#60a5fa"
-          chart={<Sparkline {...SPARKLINES.body} legendMuted={theme.sparkLegend} />}
+          mainSub={bodyMainSub}
+          mainColor="#facc15"
+          iconColor="#38bdf8"
+          chart={bodyChartEl}
           metrics={[
             { label: "BF est", value: fmt(bf, "%", 1) },
-            { label: "Steps", value: a?.steps != null ? Math.round(a.steps).toLocaleString() : "—", color: "#34d399" },
-            { label: "Calories in", value: a?.calories != null ? Math.round(a.calories).toLocaleString() : "—", color: "#fb923c" },
-            { label: "Distance", value: fmt(a?.distance_mi, " mi", 1) },
+            { label: "Lost", value: lostLb != null ? `${lostLb.toFixed(1)} lb` : "—", color: "#4ade80" },
+            { label: "Progress", value: progressPct != null ? `${progressPct}%` : "—", color: "#38bdf8" },
+            { label: "DEXA Δ", value: a?.dexa_delta_pct != null ? `${fmt(a.dexa_delta_pct, "%", 1)}` : "—", color: "#a3a3a3" },
           ]}
         />
 
@@ -570,14 +819,20 @@ export default function HealthPanel({ darkMode = true }) {
           {...panelSkin}
           title="Activity"
           main={strainVal != null ? `${strainVal.toFixed(1)} strain` : "—"}
-          mainSub={a?.steps != null ? `${Math.round(a.steps).toLocaleString()} steps today` : "Strain & movement"}
+          mainSub={
+            a?.steps != null
+              ? `${Math.round(a.steps).toLocaleString()} steps · ${latest.dayLabel || "today"}`
+              : latest.dayLabel
+                ? `Cycle · ${latest.dayLabel}`
+                : "Strain & movement"
+          }
           mainColor={sColor}
           iconColor="#fb923c"
-          chart={<Sparkline {...SPARKLINES.activity} legendMuted={theme.sparkLegend} />}
+          chart={activityChartEl}
           metrics={[
-            { label: "Steps", value: a?.steps != null ? Math.round(a.steps).toLocaleString() : "—", color: "#34d399" },
-            { label: "Energy", value: a?.active_energy_kcal != null ? `${Math.round(a.active_energy_kcal)} kcal` : "—", color: "#60a5fa" },
-            { label: "7D strain", value: w?.strain_7d != null ? w.strain_7d.toFixed(1) : "—", color: "#a78bfa" },
+            { label: "Steps", value: a?.steps != null ? Math.round(a.steps).toLocaleString() : "—", color: "#4ade80" },
+            { label: "Energy", value: a?.active_energy_kcal != null ? `${Math.round(a.active_energy_kcal)} kcal` : latest.energyKcal != null ? `${latest.energyKcal} kcal` : "—", color: "#38bdf8" },
+            { label: "7D strain", value: strain7d, color: "#c084fc" },
             { label: "Walk", value: fmt(a?.distance_mi, " mi", 1) },
           ]}
         />
@@ -588,15 +843,15 @@ export default function HealthPanel({ darkMode = true }) {
           main={`${calIn.toLocaleString()} / ${CAL_GOAL.toLocaleString()}`}
           mainSub={`${protIn}g / ${PROTEIN_GOAL_G}g protein`}
           mainColor="#fb923c"
-          iconColor="#fbbf24"
+          iconColor="#facc15"
           chart={<DonutChart protein={a?.protein_g} carbs={a?.carbs_g} fat={a?.fat_g} />}
           metrics={[
-            { label: "Cal left", value: calLeft.toLocaleString(), color: "#94a3b8" },
+            { label: "Cal left", value: calLeft.toLocaleString(), color: "#a3a3a3" },
             { label: "Prot left", value: `${protLeft}g`, color: "#fb923c" },
             { label: "Carbs", value: fmt(a?.carbs_g, "g"), color: "#3b82f6" },
-            { label: "Fat", value: fmt(a?.fat_g, "g"), color: "#fbbf24" },
+            { label: "Fat", value: fmt(a?.fat_g, "g"), color: "#facc15" },
             { label: "DEXA RMR", value: dexaRmr != null ? `${dexaRmr} kcal` : "—", color: "#737373" },
-            { label: "Est TDEE", value: estTdee != null ? `${estTdee} kcal` : "—", color: "#a78bfa" },
+            { label: "Est TDEE", value: estTdee != null ? `${estTdee} kcal` : "—", color: "#c084fc" },
           ]}
         />
       </div>
@@ -604,14 +859,15 @@ export default function HealthPanel({ darkMode = true }) {
       {!a && (
         <div
           style={{
-            marginTop: 14,
+            marginTop: 16,
             padding: "12px 16px",
             background: theme.panel,
             border: `1px solid ${theme.border}`,
             borderRadius: 10,
             fontSize: 9,
             color: theme.finePrint,
-            letterSpacing: 0.4,
+            letterSpacing: 0.35,
+            fontFamily: FONT,
           }}
         >
           Apple Health data (weight, steps, nutrition) comes from your iOS Shortcut. Run it each morning to populate.

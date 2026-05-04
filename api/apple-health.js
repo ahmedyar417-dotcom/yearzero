@@ -16,16 +16,23 @@ export default async function handler(req, res) {
   const parse = (v) => (v != null && v !== '' ? parseFloat(v) : null);
 
   const appleData = {
-    weight_lb:      parse(src.weight_lb),
-    steps:          parse(src.steps),
-    calories:       parse(src.calories),
-    distance_mi:    parse(src.distance_mi),
-    body_fat_pct:   parse(src.body_fat_pct),
-    protein_g:      parse(src.protein_g),
-    carbs_g:        parse(src.carbs_g),
-    fat_g:          parse(src.fat_g),
-    sugar_g:         parse(src.sugar_g),
-    fetchedAt:      new Date().toISOString(),
+    weight_lb:           parse(src.weight_lb),
+    steps:               parse(src.steps),
+    calories:            parse(src.calories),
+    distance_mi:         parse(src.distance_mi),
+    body_fat_pct:        parse(src.body_fat_pct),
+    protein_g:           parse(src.protein_g),
+    carbs_g:             parse(src.carbs_g),
+    fat_g:               parse(src.fat_g),
+    sugar_g:             parse(src.sugar_g),
+    active_energy_kcal:  parse(src.active_energy_kcal),
+    start_weight_lb:     parse(src.start_weight_lb),
+    goal_weight_lb:      parse(src.goal_weight_lb),
+    vs_plan_lb:          parse(src.vs_plan_lb),
+    tdee_kcal:           parse(src.tdee_kcal),
+    rmr_kcal:            parse(src.rmr_kcal),
+    dexa_delta_pct:      parse(src.dexa_delta_pct),
+    fetchedAt:           new Date().toISOString(),
   };
 
   const supabaseUrl = process.env.SUPABASE_URL || 'https://mypnnyamygoigaimdypd.supabase.co';
