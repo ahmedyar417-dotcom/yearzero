@@ -10,14 +10,33 @@ function monthContext(d = new Date()) {
   return { year: y, month: m, label };
 }
 
+/** Calendar day of cycle end in the user's browser TZ — matches Apple yz-health-{date} keys. */
+function cycleLocalYMD(row) {
+  const iso = row?.cycleEndIso || row?.cycleStart;
+  if (!iso) return row?.cycleEndDate ?? null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return row?.cycleEndDate ?? null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function filterWhoopMonth(days, year, month1) {
   if (!days?.length) return [];
   return days.filter((row) => {
-    if (!row.cycleEndDate) return false;
-    const parts = row.cycleEndDate.split("-").map(Number);
-    const yy = parts[0];
-    const mm = parts[1];
-    return yy === year && mm === month1;
+    const iso = row.cycleEndIso || row.cycleStart;
+    if (iso) {
+      const d = new Date(iso);
+      if (!Number.isNaN(d.getTime())) {
+        return d.getFullYear() === year && d.getMonth() + 1 === month1;
+      }
+    }
+    if (row.cycleEndDate) {
+      const parts = row.cycleEndDate.split("-").map(Number);
+      return parts[0] === year && parts[1] === month1;
+    }
+    return false;
   });
 }
 
@@ -499,12 +518,12 @@ const PROTEIN_GOAL_G = 180;
 
 function mergeAppleSteps(whoopDays, applePoints) {
   const byDate = new Map((applePoints || []).map((p) => [p.date, p]));
-  return whoopDays.map((d) => byDate.get(d.cycleEndDate)?.steps ?? null);
+  return whoopDays.map((row) => byDate.get(cycleLocalYMD(row))?.steps ?? null);
 }
 
 export default function HealthPanel({ darkMode = true }) {
   const [data, setData] = useState(() => ls.get(HEALTH_KEY()) || {});
-  const [series, setSeries] = useState(() => ls.get("yz-whoop-series-v1"));
+  const [series, setSeries] = useState(() => ls.get("yz-whoop-series-v2"));
   const [appleHist, setAppleHist] = useState(() => ls.get("yz-health-history-v1"));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -529,7 +548,7 @@ export default function HealthPanel({ darkMode = true }) {
       .then((r) => r.json())
       .then((json) => {
         if (json.days?.length) {
-          ls.set("yz-whoop-series-v1", json);
+          ls.set("yz-whoop-series-v2", json);
           setSeries(json);
         }
       })
@@ -568,7 +587,7 @@ export default function HealthPanel({ darkMode = true }) {
       const seriesRes = await fetch("/api/whoop-series");
       const seriesJson = await seriesRes.json();
       if (seriesJson.days?.length) {
-        ls.set("yz-whoop-series-v1", seriesJson);
+        ls.set("yz-whoop-series-v2", seriesJson);
         setSeries(seriesJson);
       }
       const histRes = await fetch("/api/health-history");
@@ -601,7 +620,7 @@ export default function HealthPanel({ darkMode = true }) {
     const d = monthWhoop;
     const stepsAligned = mergeAppleSteps(d, applePoints);
     const weightsAligned = d.map((row) => {
-      const hit = applePoints.find((p) => p.date === row.cycleEndDate);
+      const hit = applePoints.find((p) => p.date === cycleLocalYMD(row));
       return hit?.weight_lb ?? null;
     });
 
@@ -737,10 +756,10 @@ export default function HealthPanel({ darkMode = true }) {
     w?.recovery?.hrv != null ? `${w.recovery.hrv} ms HRV · WHOOP resting heart rate` : latest.hrv != null ? `${latest.hrv} ms HRV · WHOOP resting heart rate` : "WHOOP resting heart rate",
   ];
 
-  const calIn = a?.calories != null ? Math.round(a.calories) : 0;
-  const protIn = a?.protein_g != null ? Math.round(a.protein_g) : 0;
-  const calLeft = Math.max(0, CAL_GOAL - calIn);
-  const protLeft = Math.max(0, PROTEIN_GOAL_G - protIn);
+  const calIn = a?.calories != null ? Math.round(a.calories) : null;
+  const protIn = a?.protein_g != null ? Math.round(a.protein_g) : null;
+  const calLeft = calIn != null ? Math.max(0, CAL_GOAL - calIn) : null;
+  const protLeft = protIn != null ? Math.max(0, PROTEIN_GOAL_G - protIn) : null;
   const estTdee = a?.tdee_kcal != null ? Math.round(a.tdee_kcal) : null;
   const dexaRmr = a?.rmr_kcal != null ? Math.round(a.rmr_kcal) : null;
 
@@ -1062,14 +1081,14 @@ export default function HealthPanel({ darkMode = true }) {
         <Panel
           {...panelSkin}
           title="Nutrition"
-          main={`${calIn.toLocaleString()} / ${CAL_GOAL.toLocaleString()}`}
-          mainSub={`${protIn}g / ${PROTEIN_GOAL_G}g protein`}
+          main={`${calIn != null ? calIn.toLocaleString() : "—"} / ${CAL_GOAL.toLocaleString()}`}
+          mainSub={`${protIn != null ? protIn : "—"}g / ${PROTEIN_GOAL_G}g protein`}
           mainColor="#fb923c"
           iconColor="#facc15"
           chart={<DonutChart protein={a?.protein_g} carbs={a?.carbs_g} fat={a?.fat_g} />}
           metrics={[
-            { label: "Cal left", value: calLeft.toLocaleString(), color: "#a3a3a3", spark: nutCalLeft, sparkColor: "#a3a3a3" },
-            { label: "Prot left", value: `${protLeft}g`, color: "#fb923c", spark: nutProtLeft, sparkColor: "#fb923c" },
+            { label: "Cal left", value: calLeft != null ? calLeft.toLocaleString() : "—", color: "#a3a3a3", spark: nutCalLeft, sparkColor: "#a3a3a3" },
+            { label: "Prot left", value: protLeft != null ? `${protLeft}g` : "—", color: "#fb923c", spark: nutProtLeft, sparkColor: "#fb923c" },
             { label: "Carbs", value: fmt(a?.carbs_g, "g"), color: "#3b82f6", spark: nutCarbs, sparkColor: "#3b82f6" },
             { label: "Fat", value: fmt(a?.fat_g, "g"), color: "#facc15", spark: nutFat, sparkColor: "#facc15" },
             { label: "DEXA RMR", value: dexaRmr != null ? `${dexaRmr} kcal` : "—", color: "#737373" },

@@ -155,12 +155,17 @@ export default async function handler(req, res) {
         if (needMs === 0) needMs = sn.baseline_milli ?? null;
       }
 
-      const cycleEnd = cycle.end ? new Date(cycle.end) : new Date(cycle.start);
-      const cycleEndDate = cycleEnd.toISOString().slice(0, 10);
-      const dayLabel = cycleEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const cycleEndIso = cycle.end || cycle.start;
+      const cycleEnd = cycleEndIso ? new Date(cycleEndIso) : new Date();
+      // UTC YYYY-MM-DD (legacy / debug); UI filters by cycleEndIso in local TZ
+      const cycleEndDate = Number.isNaN(cycleEnd.getTime()) ? null : cycleEnd.toISOString().slice(0, 10);
+      const dayLabel = Number.isNaN(cycleEnd.getTime())
+        ? ''
+        : cycleEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
       return {
         cycleId: cycle.id,
+        cycleEndIso,
         cycleEndDate,
         dayLabel,
         cycleStart: cycle.start,
