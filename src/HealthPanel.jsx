@@ -59,10 +59,10 @@ const fmt = (v, unit = "", decimals = 0) =>
   v == null ? "—" : `${typeof v === "number" ? v.toFixed(decimals) : v}${unit}`;
 
 const recoveryColor = (score) => {
-  if (score == null) return "#e5e7eb";
-  if (score >= 67) return "#4ade80";
-  if (score >= 34) return "#facc15";
-  return "#fb923c";
+  if (score == null) return "#aaa";
+  if (score >= 67) return "#00FF88";
+  if (score >= 34) return "#FFD700";
+  return "#FF6B35";
 };
 
 const recoveryLabel = (score) => {
@@ -73,11 +73,11 @@ const recoveryLabel = (score) => {
 };
 
 const strainColor = (strain) => {
-  if (strain == null) return "#a3a3a3";
-  if (strain >= 18) return "#fb923c";
-  if (strain >= 14) return "#facc15";
-  if (strain >= 10) return "#c084fc";
-  return "#4ade80";
+  if (strain == null) return "#aaa";
+  if (strain >= 18) return "#FF6B35";
+  if (strain >= 14) return "#FFD700";
+  if (strain >= 10) return "#A78BFA";
+  return "#00FF88";
 };
 
 const HEALTH_KEY = () => `yz-health-${new Date().toISOString().slice(0, 10)}`;
@@ -285,7 +285,7 @@ function MonthEmpty({ message }) {
         width: 172,
         height: 58,
         flexShrink: 0,
-        border: "1px dashed #3f3f3f",
+        border: "1px dashed #2a2a2a",
         borderRadius: 8,
         display: "flex",
         alignItems: "center",
@@ -393,26 +393,24 @@ function HeroCard({ label, value, lines = [], gradient }) {
     <div
       style={{
         background: gradient,
-        borderRadius: 10,
-        padding: "16px 18px 18px",
-        flex: "1 1 22%",
-        minWidth: 200,
+        borderRadius: 14,
+        padding: "22px 26px",
+        flex: 1,
+        minWidth: 0,
         display: "flex",
         flexDirection: "column",
         gap: 3,
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 12px 40px rgba(0,0,0,0.45)",
       }}
     >
-      <span style={{ fontSize: 8, color: "rgba(255,255,255,0.52)", letterSpacing: 2.5, fontWeight: 700, fontFamily: FONT }}>{label.toUpperCase()}</span>
+      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", letterSpacing: 2, fontWeight: 700, fontFamily: "system-ui, -apple-system, sans-serif" }}>{label.toUpperCase()}</span>
       <span
         style={{
-          fontSize: 48,
+          fontSize: 52,
           fontWeight: 800,
           color: "#fff",
-          lineHeight: 1,
-          fontFamily: FONT,
+          lineHeight: 1.05,
+          fontFamily: "system-ui, -apple-system, sans-serif",
           marginTop: 4,
-          letterSpacing: -1.5,
         }}
       >
         {value}
@@ -421,12 +419,12 @@ function HeroCard({ label, value, lines = [], gradient }) {
         <span
           key={i}
           style={{
-            fontSize: i === 0 ? 11.5 : 10,
+            fontSize: i === 0 ? 11 : 10,
             fontWeight: i === 0 ? 500 : 400,
-            color: i === 0 ? "rgba(255,255,255,0.88)" : "rgba(255,255,255,0.5)",
-            marginTop: i === 0 ? 6 : 2,
+            color: i === 0 ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.45)",
+            marginTop: i === 0 ? 3 : 1,
             lineHeight: 1.4,
-            fontFamily: FONT,
+            fontFamily: "system-ui, -apple-system, sans-serif",
           }}
         >
           {line}
@@ -436,66 +434,47 @@ function HeroCard({ label, value, lines = [], gradient }) {
   );
 }
 
-function Metric({ label, value, color, muted, valueDefault = "#e5e7eb", spark, sparkColor }) {
-  const lineColor = sparkColor || color || "#737373";
+function Metric({ label, value, color, muted, valueDefault = "#c0c0c0", spark, sparkColor }) {
+  const lineColor = sparkColor || color || "#555";
   return (
     <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 6, minWidth: 0 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: 1 }}>
-        <span style={{ fontSize: 8, color: muted || "#737373", letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 600, fontFamily: FONT }}>
+        <span style={{ fontSize: 9, color: muted || "#4a4a4a", letterSpacing: 1, textTransform: "uppercase", fontWeight: 600, fontFamily: "system-ui, -apple-system, sans-serif" }}>
           {label}
         </span>
-        <span style={{ fontSize: 14, fontWeight: 600, color: color ?? valueDefault, fontFamily: FONT, lineHeight: 1.2 }}>{value}</span>
+        <span style={{ fontSize: 16, fontWeight: 600, color: color ?? valueDefault, fontFamily: "system-ui, -apple-system, sans-serif", lineHeight: 1.2 }}>{value}</span>
       </div>
       <MiniSparkline values={spark} color={lineColor} />
     </div>
   );
 }
 
-function PanelIcon({ color }) {
+function Panel({ title, main, mainSub, mainColor, metrics, chart, iconColor, surface, border, titleColor, subColor, dividerColor, metricMuted, valueDefault = "#c0c0c0", minh }) {
   return (
     <div
       style={{
-        width: 26,
-        height: 26,
-        borderRadius: "50%",
-        background: `radial-gradient(circle at 30% 25%, ${color}66, ${color}14 65%, transparent)`,
-        border: `1px solid ${color}40`,
-        flexShrink: 0,
-      }}
-    />
-  );
-}
-
-function Panel({ title, main, mainSub, mainColor, metrics, chart, iconColor = "#6366f1", surface, border, titleColor, subColor, dividerColor, metricMuted, valueDefault = "#e5e7eb", minh }) {
-  return (
-    <div
-      style={{
-        background: surface || "#161616",
-        border: `1px solid ${border || "#2a2a2a"}`,
-        borderRadius: 10,
-        padding: "14px 16px 14px",
+        background: surface || "#111",
+        border: `1px solid ${border || "#1c1c1c"}`,
+        borderRadius: 14,
+        padding: "20px 22px",
         display: "flex",
         flexDirection: "column",
-        gap: 10,
-        minHeight: minh || 236,
+        gap: 14,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-        <span style={{ fontSize: 8, color: titleColor || "#525252", letterSpacing: 2.8, fontWeight: 700, fontFamily: FONT }}>{title.toUpperCase()}</span>
-        <PanelIcon color={iconColor} />
-      </div>
+      <span style={{ fontSize: 9, color: titleColor || "#3a3a3a", letterSpacing: 2, fontWeight: 700, fontFamily: "system-ui, -apple-system, sans-serif" }}>{title.toUpperCase()}</span>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 42, fontWeight: 800, color: mainColor || "#fafafa", lineHeight: 1, fontFamily: FONT, letterSpacing: -1.2 }}>{main}</div>
+          <div style={{ fontSize: 44, fontWeight: 800, color: mainColor || "#fff", lineHeight: 1, fontFamily: "system-ui, -apple-system, sans-serif" }}>{main}</div>
           {mainSub && (
-            <div style={{ fontSize: 11.5, color: subColor || "#737373", marginTop: 5, lineHeight: 1.35, fontWeight: 400, fontFamily: FONT }}>{mainSub}</div>
+            <div style={{ fontSize: 11, color: subColor || "#4a4a4a", marginTop: 6, lineHeight: 1.35, fontWeight: 400, fontFamily: "system-ui, -apple-system, sans-serif" }}>{mainSub}</div>
           )}
         </div>
-        {chart && <div style={{ flexShrink: 0 }}>{chart}</div>}
+        {chart && <div style={{ flexShrink: 0, marginTop: 2 }}>{chart}</div>}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "11px 14px", paddingTop: 12, marginTop: "auto", borderTop: `1px solid ${dividerColor || "#2a2a2a"}` }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", paddingTop: 12, borderTop: `1px solid ${dividerColor || "#1c1c1c"}` }}>
         {metrics.map(({ label, value, color, spark, sparkColor }, idx) => (
           <Metric
             key={`${title}-${idx}-${label}`}
@@ -763,9 +742,11 @@ export default function HealthPanel({ darkMode = true }) {
   const estTdee = a?.tdee_kcal != null ? Math.round(a.tdee_kcal) : null;
   const dexaRmr = a?.rmr_kcal != null ? Math.round(a.rmr_kcal) : null;
 
-  const theme = darkMode
-    ? { bg: "#0f0f0f", headerSub: "#737373", panel: "#161616", sparkLegend: "#737373", border: "#2a2a2a", panelTitle: "#525252", metricMuted: "#737373", finePrint: "#737373", valueDefault: "#e5e7eb" }
-    : { bg: "#ecebe8", headerSub: "#64748b", panel: "#ffffff", sparkLegend: "#94a3b8", border: "#e2e2df", panelTitle: "#78716c", metricMuted: "#78716c", finePrint: "#57534e", valueDefault: "#1c1917" };
+  const theme = {
+    bg: "#0a0a0a", headerSub: "#444", panel: "#111", sparkLegend: "#3a3a3a",
+    border: "#1c1c1c", panelTitle: "#3a3a3a", metricMuted: "#4a4a4a",
+    finePrint: "#333", valueDefault: "#c0c0c0",
+  };
 
   const panelSkin = {
     surface: theme.panel,
@@ -775,7 +756,6 @@ export default function HealthPanel({ darkMode = true }) {
     dividerColor: theme.border,
     metricMuted: theme.metricMuted,
     valueDefault: theme.valueDefault,
-    minh: 248,
   };
 
   const strain7d = summary.strainSum7d != null ? summary.strainSum7d.toFixed(1) : "—";
@@ -838,33 +818,24 @@ export default function HealthPanel({ darkMode = true }) {
         ? `${bf.toFixed(1)}% body fat`
         : "Sync Apple Health";
 
-  if (!darkMode) {
-    return (
-      <div style={{ padding: 24, fontFamily: FONT, color: "#1a1a1a", background: theme.bg, minHeight: "calc(100vh - 52px)" }}>
-        <p style={{ fontSize: 13 }}>Use dark mode for the health dashboard.</p>
-      </div>
-    );
-  }
-
   return (
     <div
       style={{
-        padding: "18px 20px 32px",
-        maxWidth: 1240,
+        padding: "20px 24px",
+        maxWidth: 1300,
         margin: "0 auto",
-        fontFamily: FONT,
-        background: "#0f0f0f",
+        fontFamily: "system-ui, -apple-system, sans-serif",
+        background: "#0a0a0a",
         minHeight: "calc(100vh - 52px)",
-        color: "#fafafa",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
         <div>
-          <div style={{ fontSize: 9, color: "#525252", letterSpacing: 3.2, fontWeight: 700 }}>HEALTH</div>
-          <div style={{ fontSize: 9, color: theme.headerSub, letterSpacing: 0.5, marginTop: 5, fontWeight: 400 }}>
-            Trends · {monthTitle} · cycles dated this month
+          <div style={{ fontSize: 10, color: "#555", letterSpacing: 2, fontWeight: 700 }}>HEALTH</div>
+          <div style={{ fontSize: 9, color: "#444", letterSpacing: 1, marginTop: 3 }}>
+            {monthTitle} · cycles this month
           </div>
-          <div style={{ fontSize: 9, color: "#3f3f3f", letterSpacing: 0.4, marginTop: 4, fontWeight: 400 }}>
+          <div style={{ fontSize: 9, color: "#333", letterSpacing: 0.4, marginTop: 4 }}>
             {whoopTime ? `WHOOP ${whoopTime}` : "WHOOP NOT SYNCED"}
             {appleTime ? ` · APPLE ${appleTime}` : " · APPLE NOT SYNCED"}
           </div>
@@ -873,16 +844,15 @@ export default function HealthPanel({ darkMode = true }) {
           onClick={fetchWhoop}
           disabled={loading}
           style={{
-            background: loading ? "#1a1a1a" : "rgba(45, 212, 191, 0.1)",
-            border: `1px solid ${loading ? "#333" : "rgba(45, 212, 191, 0.35)"}`,
+            background: loading ? "#181818" : "#00FF8814",
+            border: `1px solid ${loading ? "#333" : "#00FF8833"}`,
             borderRadius: 8,
-            padding: "10px 22px",
+            padding: "8px 18px",
             cursor: loading ? "not-allowed" : "pointer",
-            fontSize: 9,
-            color: loading ? "#525252" : "#2dd4bf",
-            letterSpacing: 1.8,
+            fontSize: 10,
+            color: loading ? "#444" : "#00FF88",
+            letterSpacing: 1,
             fontWeight: 700,
-            fontFamily: FONT,
           }}
         >
           {loading ? "SYNCING…" : "SYNC WHOOP"}
@@ -890,12 +860,12 @@ export default function HealthPanel({ darkMode = true }) {
       </div>
 
       {error && (
-        <div style={{ background: "rgba(251, 146, 60, 0.08)", border: "1px solid rgba(251, 146, 60, 0.28)", borderRadius: 10, padding: "10px 16px", fontSize: 11, color: "#fb923c", marginBottom: 14, fontFamily: FONT }}>
+        <div style={{ background: "#FF6B3510", border: "1px solid #FF6B3540", borderRadius: 10, padding: "10px 16px", fontSize: 11, color: "#FF6B35", marginBottom: 14 }}>
           {error}
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
         <HeroCard
           label="Recovery Score"
           value={fmt(recScore)}
@@ -922,7 +892,7 @@ export default function HealthPanel({ darkMode = true }) {
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, gridAutoRows: "minmax(248px, auto)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
         <Panel
           {...panelSkin}
           title="Recovery"
@@ -1100,15 +1070,13 @@ export default function HealthPanel({ darkMode = true }) {
       {!a && (
         <div
           style={{
-            marginTop: 16,
-            padding: "12px 16px",
-            background: theme.panel,
-            border: `1px solid ${theme.border}`,
+            marginTop: 10,
+            padding: "10px 16px",
+            background: "#111",
+            border: "1px solid #1c1c1c",
             borderRadius: 10,
-            fontSize: 9,
-            color: theme.finePrint,
-            letterSpacing: 0.35,
-            fontFamily: FONT,
+            fontSize: 10,
+            color: "#333",
           }}
         >
           Apple Health data (weight, steps, nutrition) comes from your iOS Shortcut. Run it each morning to populate.
