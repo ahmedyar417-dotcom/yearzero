@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import MacroTracker from "./MacroTracker";
 import Project100 from "./Project100";
+import Project25 from "./Project25";
 import HealthPanel from "./HealthPanel";
 import OutreachPanel from "./OutreachPanel";
 import { supabase } from "./supabase";
@@ -1258,11 +1259,12 @@ export default function App() {
         {/* Tabs */}
         <div style={{ display: "flex", alignItems: "stretch", flex: 1, height: "100%" }}>
           {[
-            { key: "goals",   label: "Goals"   },
-            { key: "habits",  label: "Habits"  },
-            { key: "track",   label: "Track"   },
-            { key: "journal", label: "Journal" },
-            { key: "plan",    label: "Plan"    },
+            { key: "goals",   label: "Goals"      },
+            { key: "habits",  label: "Habits"     },
+            { key: "track",   label: "Track"      },
+            { key: "p25",     label: "Project 25" },
+            { key: "journal", label: "Journal"    },
+            { key: "plan",    label: "Plan"       },
           ].map(({ key, label }) => {
             const isActive = activeTab === key;
             return (
@@ -1345,6 +1347,8 @@ export default function App() {
       {/* ── Tab content ─────────────────────────────────────────────────────── */}
 
       {activeTab === "track" && <Project100 session={session} darkMode={isDark} />}
+
+      {activeTab === "p25" && <Project25 session={session} darkMode={isDark} />}
 
       {activeTab === "habits" && (
         <div style={{ background: isDark ? "#0f0f0f" : "#f2f1ed", minHeight: "calc(100vh - 52px)" }}>
