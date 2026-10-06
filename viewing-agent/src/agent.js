@@ -1,0 +1,250 @@
+import { DateTime } from 'luxon';
+import { allFreeSlots, checkSlot, describeWeeklyHours, formatSlot, parseTime, suggestSlots } from './availability.js';
+import { escalation } from './brain.js';
+import { LABEL_MAIN, LABEL_NEEDS_YOU } from './gmail.js';
+import { matchProperty } from './matcher.js';
+
+const NO_REPLY_SENDER = /(^|[._-])(no-?reply|do-?not-?reply|mailer-daemon|postmaster|bounce[s]?)([._-]|@)/i;
+// If our own outgoing text ever contains these, a human should look first.
+const SENSITIVE_OUTGOING = /\b(sort code|account number|iban|card number|cvv|passport number|national insurance|password)\b/i;
+// Inbound topics the owner should hear about even if the agent carries on.
+const FYI_INBOUND = /\b(holding deposit|deposit|referencing|application form|right to rent|guarantor form|tenancy agreement|contract)\b/i;
+
+const DEFAULT_MAX_AUTO_REPLIES = 8;
+
+function propertyState(state, id) {
+  state.properties[id] ??= { status: 'new', threadIds: [], autoReplies: 0, booking: null, paused: false, history: [] };
+  return state.properties[id];
+}
+
+function bookings(state) {
+  return Object.entries(state.properties)
+    .filter(([, s]) => s.booking)
+    .map(([propertyId, s]) => ({ propertyId, start: s.booking.start }));
+}
+
+function withSignature(body, profile) {
+  return `${body.trim()}\n\n${(profile.signature ?? profile.name).trim()}\n${profile.phone ? `${profile.phone}\n` : ''}`;
+}
+
+export function enquiryBody({ property, profile, slots }) {
+  const greeting = property.agent_name ? `Hi ${property.agent_name},` : 'Hello,';
+  const t = profile.tenant ?? {};
+  const facts = [t.move_in_date && `looking to move in ${t.move_in_date}`, t.number_of_occupants, t.employment]
+    .filter(Boolean)
+    .join(', ');
+  return `${greeting}
+
+I'm interested in the property at ${property.address}${property.listing_url ? ` (${property.listing_url})` : ''} and would like to arrange a viewing, if it's still available.${facts ? `\n\nA little about me: ${facts}.` : ''}
+
+I'm available at any of the following times:
+${slots.map((s) => `- ${formatSlot(s)}`).join('\n')}
+
+If none of those suit, please let me know some times that work for you.`;
+}
+
+/**
+ * One pass of the agent: send enquiries for new properties, then handle new replies.
+ * All side effects go through `gmail` and `brain`, so tests can pass fakes.
+ */
+export async function runAgent({ config, state, gmail, brain, now = DateTime.now(), dryRun = false, log = console.log, maxAutoReplies = DEFAULT_MAX_AUTO_REPLIES }) {
+  const { profile, availability, properties } = config;
+  const tz = profile.timezone;
+  now = now.setZone(tz);
+  const me = await gmail.getMyAddress();
+  const notifyTo = config.notifyEmail || me;
+  const report = { enquiries: [], replies: [], bookings: [], escalations: [], skipped: [] };
+
+  const send = async (args) => {
+    if (dryRun) {
+      log(`\n[DRY RUN] would send to ${args.to} — ${args.subject}\n${args.body}\n`);
+      return { id: `dry-${Math.random().toString(36).slice(2)}`, threadId: args.replyTo?.threadId ?? `dry-thread-${args.to}` };
+    }
+    const sent = await gmail.send(args);
+    state.agentSentMessageIds.push(sent.id);
+    return sent;
+  };
+  const label = async (threadId, add, remove = []) => {
+    if (!dryRun) await gmail.labelThread(threadId, add, remove);
+  };
+  const notify = async (subject, body) => {
+    log(`[notify] ${subject}`);
+    if (!dryRun) await gmail.send({ to: notifyTo, subject: `[Viewing Agent] ${subject}`, body });
+  };
+  const slotOpts = (excludePropertyId) => ({ now, availability, tz, bookings: bookings(state), excludePropertyId });
+
+  // 1. First-contact enquiries.
+  for (const property of properties.filter((p) => p.active)) {
+    const ps = propertyState(state, property.id);
+    if (ps.status !== 'new') continue;
+    if (!property.send_enquiry) {
+      ps.status = 'active';
+      continue;
+    }
+    if (!property.agent_email) {
+      report.skipped.push(`${property.id}: no agent_email to send the enquiry to`);
+      continue;
+    }
+    const slots = suggestSlots(slotOpts(property.id), 3);
+    if (!slots.length) {
+      report.skipped.push(`${property.id}: no free viewing slots in the next ${availability.max_days_ahead ?? 14} days`);
+      continue;
+    }
+    const sent = await send({
+      to: property.agent_email,
+      subject: `Viewing request: ${property.address}`,
+      body: withSignature(enquiryBody({ property, profile, slots }), profile),
+    });
+    ps.threadIds.push(sent.threadId);
+    ps.status = 'active';
+    ps.enquirySentAt = now.toISO();
+    ps.history.push({ at: now.toISO(), event: 'enquiry_sent' });
+    await label(sent.threadId, [LABEL_MAIN]);
+    report.enquiries.push(property.id);
+  }
+
+  // 2. Replies. Group new messages by thread and answer only the latest in each.
+  const processed = new Set(state.processedMessageIds);
+  const agentSent = new Set(state.agentSentMessageIds);
+  const inbound = (await gmail.listRecentInbound({ days: 7 })).filter((m) => !processed.has(m.id) && m.fromEmail !== me);
+  const byThread = new Map();
+  for (const m of inbound) byThread.set(m.threadId, [...(byThread.get(m.threadId) ?? []), m]);
+
+  for (const [threadId, msgs] of byThread) {
+    const latest = msgs[msgs.length - 1];
+    const property = matchProperty(latest, properties, state);
+    if (!property) continue; // not about any listed property — leave it alone, don't mark processed
+    const ps = propertyState(state, property.id);
+    const markDone = () => msgs.forEach((m) => state.processedMessageIds.push(m.id));
+
+    if (ps.status === 'new') ps.status = 'active'; // they emailed before we did
+    if (!ps.threadIds.includes(threadId)) ps.threadIds.push(threadId);
+
+    if (NO_REPLY_SENDER.test(latest.replyTo ?? latest.fromEmail)) {
+      report.skipped.push(`${property.id}: ${latest.fromEmail} is a no-reply address`);
+      await label(threadId, [LABEL_MAIN, LABEL_NEEDS_YOU]);
+      await notify(`Needs you: ${property.address}`, `An email about ${property.address} came from a no-reply address (${latest.fromEmail}), so I couldn't answer it.\n\nSubject: ${latest.subject}\n\n${latest.body.slice(0, 2000)}`);
+      markDone();
+      continue;
+    }
+
+    const thread = await gmail.getThread(threadId);
+    const last = thread[thread.length - 1];
+    if (last && last.fromEmail === me && !agentSent.has(last.id) && last.date >= latest.date) {
+      // The owner already answered this themselves — don't double up.
+      markDone();
+      continue;
+    }
+
+    // If the thread was escalated, stay out of it until the owner has replied themselves.
+    if (ps.paused) {
+      const ownerReplied = thread.some((m) => m.fromEmail === me && !agentSent.has(m.id) && m.date > (ps.pausedAt ?? 0));
+      if (!ownerReplied) {
+        markDone();
+        continue;
+      }
+      ps.paused = false;
+      await label(threadId, [], [LABEL_NEEDS_YOU]);
+    }
+
+    let decision;
+    if (ps.autoReplies >= maxAutoReplies) {
+      decision = escalation(`Already sent ${ps.autoReplies} automatic replies for this property without settling it.`);
+    } else {
+      const free = allFreeSlots(slotOpts(property.id)).slice(0, 40);
+      decision = await brain.decide({
+        nowText: formatSlot(now),
+        timezone: tz,
+        profile: { name: profile.name, phone: profile.phone, tenant: profile.tenant, notes: profile.notes },
+        property: { address: property.address, listing_url: property.listing_url, agent_name: property.agent_name, notes: property.notes },
+        weeklyHours: describeWeeklyHours(availability),
+        currentBooking: ps.booking ? `${ps.booking.start} (${formatSlot(DateTime.fromISO(ps.booking.start, { zone: tz }))})` : null,
+        freeTimes: free.map((s) => `${s.toISO({ suppressSeconds: true, suppressMilliseconds: true, includeOffset: false })} — ${formatSlot(s)}`),
+        thread: thread.map((m) => ({
+          fromMe: m.fromEmail === me,
+          fromEmail: m.fromEmail,
+          subject: m.subject,
+          body: m.body,
+          dateText: formatSlot(DateTime.fromMillis(m.date, { zone: tz })),
+        })),
+      });
+    }
+    decision = enforcePolicy(decision, { ps, property, slotOpts: slotOpts(property.id), tz });
+
+    const event = { at: now.toISO(), messageId: latest.id, action: decision.action, summary: decision.summary };
+    ps.history.push(event);
+    ps.history = ps.history.slice(-50);
+    log(`${property.id}: ${decision.action} — ${decision.summary}`);
+
+    if (decision.action === 'escalate') {
+      ps.paused = true;
+      ps.pausedAt = now.toMillis();
+      await label(threadId, [LABEL_MAIN, LABEL_NEEDS_YOU]);
+      await notify(
+        `Needs you: ${property.address}`,
+        `I've stopped replying on this thread until you reply yourself (after that I'll carry on).\n\nWhy: ${decision.escalation_reason}\n\nFrom: ${latest.from}\nSubject: ${latest.subject}\n\n${latest.body.slice(0, 3000)}`,
+      );
+      report.escalations.push(property.id);
+      markDone();
+      continue;
+    }
+
+    if (decision.action !== 'no_reply' && decision.reply_body.trim()) {
+      await send({
+        to: latest.replyTo ?? latest.fromEmail,
+        subject: latest.subject || `Viewing: ${property.address}`,
+        body: withSignature(decision.reply_body, profile),
+        replyTo: latest,
+      });
+      ps.autoReplies += 1;
+      report.replies.push(property.id);
+    }
+    await label(threadId, [LABEL_MAIN]);
+
+    if (decision.action === 'confirm_booking' || decision.action === 'reschedule') {
+      const start = parseTime(decision.booked_time, tz);
+      const moved = ps.booking && ps.booking.start !== start.toISO();
+      ps.booking = { start: start.toISO(), confirmedAt: now.toISO(), with: latest.fromEmail };
+      ps.status = 'booked';
+      report.bookings.push(property.id);
+      await notify(
+        `${moved ? 'Viewing moved' : 'Viewing booked'}: ${formatSlot(start)} — ${property.address}`,
+        `${formatSlot(start)}\n${property.address}\n${property.listing_url ?? ''}\n\nWith: ${latest.from}\n\n${decision.summary}`,
+      );
+    } else if (decision.action === 'cancelled') {
+      ps.booking = null;
+      ps.status = 'closed';
+      await notify(`Cancelled / let: ${property.address}`, `${decision.summary}\n\nFrom: ${latest.from}\n\n${latest.body.slice(0, 2000)}`);
+    } else if (FYI_INBOUND.test(latest.body)) {
+      await notify(`FYI: ${property.address}`, `I replied automatically (${decision.action}), but this email mentions deposits/referencing/contracts, so you may want to read it.\n\n${latest.body.slice(0, 3000)}`);
+    }
+    markDone();
+  }
+
+  return report;
+}
+
+/** Code-level guard rails applied to whatever the model decided. */
+export function enforcePolicy(decision, { ps, property, slotOpts, tz }) {
+  if (!decision || !decision.action) return escalation('No decision returned.');
+  const reply = decision.reply_body ?? '';
+
+  if (!['escalate', 'no_reply'].includes(decision.action) && !reply.trim()) {
+    return escalation(`Model chose ${decision.action} but wrote no reply.`);
+  }
+  if (SENSITIVE_OUTGOING.test(reply)) {
+    return escalation('The drafted reply mentioned sensitive financial/identity details.');
+  }
+  if (reply.length > 4000) return escalation('The drafted reply was unusually long.');
+
+  if (decision.action === 'confirm_booking' || decision.action === 'reschedule') {
+    const start = parseTime(decision.booked_time, tz);
+    if (!start) return escalation(`Model tried to book an unreadable time "${decision.booked_time}".`);
+    const check = checkSlot(start, { ...slotOpts, excludePropertyId: property.id });
+    if (!check.ok) {
+      return escalation(`Model tried to book ${formatSlot(start)}, which is not allowed (${check.reason}).`);
+    }
+  }
+  if (decision.action === 'reschedule' && !ps.booking) decision.action = 'confirm_booking';
+  return decision;
+}

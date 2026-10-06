@@ -1,0 +1,29 @@
+# Who the agent is writing as, and what it is allowed to tell letting agents.
+# The agent will ONLY share facts listed here. Leave a field empty ("") to keep it private.
+
+name: "Your Name"             # TODO
+phone: ""                    # TODO: e.g. "07123 456789" — shared so agents can call/text you
+timezone: "Europe/London"
+
+# Appended to every email the agent sends.
+signature: |
+  Kind regards,
+  Your first name
+
+# Tenant details the agent may use to answer typical pre-viewing questions.
+tenant:
+  move_in_date: ""           # TODO: e.g. "from 1 December 2026, flexible"
+  number_of_occupants: ""    # TODO: e.g. "1 adult"
+  employment: ""             # TODO: e.g. "full-time, permanent contract"
+  annual_income: ""          # optional — leave blank to keep private
+  budget_pcm: ""             # TODO: e.g. "up to £1,600 pcm"
+  pets: "no pets"
+  smoker: "non-smoker"
+  guarantor: ""              # e.g. "UK guarantor available" / "not needed"
+  tenancy_length: ""         # e.g. "12 months, happy to discuss longer"
+  current_situation: ""      # e.g. "currently renting, giving notice once I find a place"
+
+# Anything else the agent should know (tone, preferences). Not shared verbatim.
+notes: |
+  Keep emails short, friendly and professional (British English).
+  Prefer in-person viewings; a video viewing is fine if in-person isn't possible.

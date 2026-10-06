@@ -1,0 +1,91 @@
+name: Viewing agent
+
+# This workflow runs once this folder is the root of its own PRIVATE repository.
+
+on:
+  schedule:
+    # Every 30 minutes fits inside GitHub's 2,000 free Actions minutes/month for private
+    # repos. Use '*/15 * * * *' if you have more minutes. GitHub may delay runs a little.
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (log emails instead of sending them)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: viewing-agent
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      STATE_BRANCH: agent-state
+    steps:
+      - name: Refuse to run in a public repository
+        if: ${{ !github.event.repository.private }}
+        run: |
+          echo "::error::This repository is public. Your profile, the properties and email logs would be visible to anyone. Make the repository private first."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # State (handled emails, booked viewings) lives on its own branch so the agent's
+      # saves never clutter main.
+      - name: Load state
+        run: |
+          mkdir -p state
+          if git fetch --depth=1 origin "$STATE_BRANCH" 2>/dev/null; then
+            git show "origin/$STATE_BRANCH:state.json" > state/state.json
+          else
+            echo "No saved state yet — starting fresh."
+          fi
+
+      - name: Run agent
+        env:
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
+          # Scheduled runs only happen once you set the repository variable AGENT_ENABLED=true.
+          ENABLED: ${{ github.event_name == 'workflow_dispatch' || vars.AGENT_ENABLED == 'true' }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: npm run agent
+
+      - name: Save state
+        if: always()
+        run: |
+          [ -f state/state.json ] || exit 0
+          auth="$(git config --get http.https://github.com/.extraheader)"
+          tmp=$(mktemp -d)
+          cp state/state.json "$tmp/state.json"
+          cd "$tmp"
+          git init -q -b "$STATE_BRANCH"
+          git config user.name "viewing-agent"
+          git config user.email "viewing-agent@users.noreply.github.com"
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          if git -c http.extraheader="$auth" fetch -q --depth=1 origin "$STATE_BRANCH" 2>/dev/null; then
+            git reset -q --soft FETCH_HEAD
+          fi
+          git add state.json
+          if git rev-parse -q --verify HEAD >/dev/null && git diff --cached --quiet; then
+            echo "State unchanged."
+            exit 0
+          fi
+          git commit -q -m "Update agent state"
+          git -c http.extraheader="$auth" push -q origin "HEAD:$STATE_BRANCH"

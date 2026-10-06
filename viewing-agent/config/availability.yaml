@@ -1,0 +1,20 @@
+# When you are free for viewings. Times are in profile.yaml's timezone.
+# The agent will only offer or accept viewing times inside these windows.
+
+weekly:
+  mon: ["17:30-20:00"]
+  tue: ["17:30-20:00"]
+  wed: ["17:30-20:00"]
+  thu: ["17:30-20:00"]
+  fri: ["17:00-20:00"]
+  sat: ["10:00-16:00"]
+  sun: []
+
+slot_minutes: 30           # how long a viewing is assumed to take
+buffer_minutes: 60         # gap kept between two viewings (travel time)
+min_notice_hours: 24       # never book anything sooner than this
+max_days_ahead: 14         # never book further out than this
+max_viewings_per_day: 3
+
+# Dates you are unavailable all day (YYYY-MM-DD).
+blackout_dates: []

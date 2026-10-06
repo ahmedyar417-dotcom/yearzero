@@ -1,0 +1,23 @@
+# The properties you want viewings for. Add one entry per property.
+#
+#   id            short unique name (letters, numbers, dashes) — never change it once used
+#   address       full address or as much as the listing shows
+#   listing_url   Rightmove/Zoopla/OpenRent/agent link (optional, helps match emails)
+#   agent_email   the letting agent / landlord email to contact
+#   agent_name    optional, used in the greeting
+#   send_enquiry  true  = agent emails them first to request a viewing (default)
+#                 false = you already enquired (e.g. via Rightmove); agent just handles replies
+#   active        false = stop handling this property completely
+#   notes         anything the agent should know (e.g. "ask if bills are included")
+#
+# Remove the example below (or set active: false) before going live.
+
+properties:
+  - id: example-flat
+    address: "Flat 2, 10 Example Road, London E1 1AA"
+    listing_url: "https://www.rightmove.co.uk/properties/000000000"
+    agent_email: "lettings@example-agents.co.uk"
+    agent_name: "Example Lettings"
+    send_enquiry: true
+    active: false
+    notes: ""
