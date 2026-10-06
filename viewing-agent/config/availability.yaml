@@ -18,3 +18,9 @@ max_viewings_per_day: 3
 
 # Dates you are unavailable all day (YYYY-MM-DD).
 blackout_dates: []
+
+# Google Calendar (optional). When enabled, the agent:
+#  - treats anything already in your calendar as busy (plus the buffer above), and
+#  - adds each booked viewing to your calendar with a 1-hour reminder (and moves/removes it if it changes).
+calendar:
+  enabled: true

@@ -87,15 +87,26 @@ export class Brain {
 
   /** @returns {Promise<{action, reply_body, booked_time, summary, escalation_reason}>} */
   async decide(ctx) {
-    const response = await this.client.beta.messages.create({
+    const request = {
       model: this.model,
       max_tokens: 16000,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
       output_config: { effort: 'medium', format: { type: 'json_schema', schema: DECISION_SCHEMA } },
       system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: renderContext(ctx) }],
-    });
+    };
+    let response;
+    try {
+      // If a safety check declines the request, let the API retry it on a fallback model.
+      response = await this.client.beta.messages.create({
+        ...request,
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+      });
+    } catch (err) {
+      if (!(err instanceof Anthropic.BadRequestError)) throw err;
+      // Fallbacks unavailable for this account/model: send the plain request instead.
+      response = await this.client.messages.create(request);
+    }
 
     if (response.stop_reason === 'refusal') {
       return escalation('The model declined to handle this email.');

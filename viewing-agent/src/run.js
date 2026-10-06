@@ -1,5 +1,6 @@
 import { Brain } from './brain.js';
 import { DEFAULT_STATE_PATH, loadConfig, loadState, saveState } from './config.js';
+import { CalendarClient } from './calendar.js';
 import { GmailClient } from './gmail.js';
 import { runAgent } from './agent.js';
 
@@ -20,24 +21,31 @@ async function main() {
   config.notifyEmail = env.NOTIFY_EMAIL || '';
   const state = loadState(statePath);
 
-  const report = await runAgent({
-    config,
-    state,
-    dryRun,
-    gmail: new GmailClient({
-      clientId: env.GMAIL_CLIENT_ID,
-      clientSecret: env.GMAIL_CLIENT_SECRET,
-      refreshToken: env.GMAIL_REFRESH_TOKEN,
-    }),
-    brain: new Brain({ apiKey: env.ANTHROPIC_API_KEY, model: env.CLAUDE_MODEL }),
+  const gmail = new GmailClient({
+    clientId: env.GMAIL_CLIENT_ID,
+    clientSecret: env.GMAIL_CLIENT_SECRET,
+    refreshToken: env.GMAIL_REFRESH_TOKEN,
   });
-
-  if (dryRun) console.log('\nDRY RUN — nothing was sent and state was not saved.');
-  else {
-    state.lastRun = new Date().toISOString();
-    saveState(state, statePath);
+  let report;
+  try {
+    report = await runAgent({
+      config,
+      state,
+      dryRun,
+      gmail,
+      calendar: config.availability.calendar?.enabled ? new CalendarClient(gmail.auth) : null,
+      brain: new Brain({ apiKey: env.ANTHROPIC_API_KEY, model: env.CLAUDE_MODEL }),
+    });
+  } finally {
+    // Save even if the run failed partway, so emails already sent are never sent twice.
+    if (dryRun) console.log('\nDRY RUN — nothing was sent and state was not saved.');
+    else {
+      state.lastRun = new Date().toISOString();
+      saveState(state, statePath);
+    }
   }
   console.log('\nSummary:', JSON.stringify(report, null, 2));
+  if (report.errors.length) process.exitCode = 1;
 }
 
 main().catch((err) => {

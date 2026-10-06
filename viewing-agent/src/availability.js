@@ -37,7 +37,7 @@ export function parseTime(value, tz) {
  * bookings: [{ start: ISO string, propertyId }]; the booking for `excludePropertyId`
  * is ignored so a property can be rescheduled.
  */
-export function checkSlot(start, { now, availability, tz, bookings = [], excludePropertyId }) {
+export function checkSlot(start, { now, availability, tz, bookings = [], busy = [], excludePropertyId }) {
   const s = settings(availability);
   start = start.setZone(tz);
   now = now.setZone(tz);
@@ -60,11 +60,17 @@ export function checkSlot(start, { now, availability, tz, bookings = [], exclude
     const gap = Math.abs(start.diff(o, 'minutes').minutes);
     if (gap < s.slot + s.buffer) return { ok: false, reason: 'clashes with another viewing' };
   }
+  // Calendar events: keep the travel buffer either side.
+  for (const b of busy) {
+    if (start < b.end.plus({ minutes: s.buffer }) && end > b.start.minus({ minutes: s.buffer })) {
+      return { ok: false, reason: 'clashes with something in your calendar' };
+    }
+  }
   return { ok: true };
 }
 
 /** All acceptable start times from now until max_days_ahead. */
-export function allFreeSlots({ now, availability, tz, bookings = [], excludePropertyId }) {
+export function allFreeSlots({ now, availability, tz, bookings = [], busy = [], excludePropertyId }) {
   const s = settings(availability);
   const out = [];
   const today = now.setZone(tz).startOf('day');
@@ -72,7 +78,7 @@ export function allFreeSlots({ now, availability, tz, bookings = [], excludeProp
     const day = today.plus({ days: d });
     for (const [a, b] of windowsFor(day, availability)) {
       for (let t = a; t.plus({ minutes: s.slot }) <= b; t = t.plus({ minutes: 30 })) {
-        if (checkSlot(t, { now, availability, tz, bookings, excludePropertyId }).ok) out.push(t);
+        if (checkSlot(t, { now, availability, tz, bookings, busy, excludePropertyId }).ok) out.push(t);
       }
     }
   }

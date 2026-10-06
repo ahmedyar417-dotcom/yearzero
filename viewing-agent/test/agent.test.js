@@ -132,3 +132,69 @@ test('dry run sends nothing', async () => {
   assert.deepEqual(report.enquiries, ['flat-a']);
   assert.equal(gmail.sent.length, 0);
 });
+
+class FakeCalendar {
+  constructor(busy = []) {
+    this.busy = busy;
+    this.events = {};
+    this.n = 0;
+  }
+  async busyBlocks() {
+    return this.busy;
+  }
+  async upsertViewing(v) {
+    const id = v.eventId ?? `ev-${++this.n}`;
+    this.events[id] = v;
+    return id;
+  }
+  async deleteViewing(id) {
+    delete this.events[id];
+  }
+}
+
+test('calendar: busy events are never offered, and bookings are added then removed on cancel', async () => {
+  const config = makeConfig();
+  const state = emptyState();
+  const gmail = new FakeGmail();
+  const at = (iso) => DateTime.fromISO(iso, { zone: 'Europe/London' });
+  // Busy all Wednesday evening.
+  const calendar = new FakeCalendar([{ start: at('2026-10-07T17:00'), end: at('2026-10-07T21:00') }]);
+  const brain = new FakeBrain([
+    decision({ action: 'confirm_booking', reply_body: 'Thursday 6pm works.', booked_time: '2026-10-08T18:00' }),
+    decision({ action: 'cancelled', reply_body: 'No problem, thanks for letting me know.' }),
+  ]);
+  await run({ config, state, gmail, brain, calendar });
+  assert.doesNotMatch(gmail.sent[0].body, /Wednesday/);
+
+  const threadId = gmail.sent[0].threadId;
+  gmail.deliver({ from: 'lettings@acme-agents.co.uk', subject: 'Re', body: 'Thursday 6pm?', threadId });
+  await run({ config, state, gmail, brain, calendar });
+  assert.ok(!brain.calls[0].freeTimes.some((t) => t.startsWith('2026-10-07')));
+  const eventId = state.properties['flat-a'].booking.calendarEventId;
+  assert.equal(calendar.events[eventId].start.toISO(), '2026-10-08T18:00:00.000+01:00');
+
+  gmail.deliver({ from: 'lettings@acme-agents.co.uk', subject: 'Re', body: 'Sorry, it has been let.', threadId });
+  await run({ config, state, gmail, brain, calendar });
+  assert.equal(calendar.events[eventId], undefined);
+  assert.equal(state.properties['flat-a'].status, 'closed');
+});
+
+test('a Claude failure leaves the email for the next run and does not resend the enquiry', async () => {
+  const config = makeConfig();
+  const state = emptyState();
+  const gmail = new FakeGmail();
+  const brain = new FakeBrain([
+    () => {
+      throw new Error('overloaded');
+    },
+    decision({ action: 'propose_slots', reply_body: 'How about Saturday 10am?' }),
+  ]);
+  await run({ config, state, gmail, brain });
+  gmail.deliver({ from: 'lettings@acme-agents.co.uk', subject: 'Re', body: 'When can you come?', threadId: gmail.sent[0].threadId });
+  const r1 = await run({ config, state, gmail, brain });
+  assert.equal(r1.errors.length, 1);
+  assert.equal(gmail.sent.length, 1);
+  const r2 = await run({ config, state, gmail, brain });
+  assert.deepEqual(r2.replies, ['flat-a']);
+  assert.equal(gmail.sent.filter((m) => /Viewing request/.test(m.subject)).length, 1);
+});

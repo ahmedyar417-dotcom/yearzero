@@ -3,7 +3,11 @@ import { OAuth2Client } from 'google-auth-library';
 
 export const LABEL_MAIN = 'Viewing Agent';
 export const LABEL_NEEDS_YOU = 'Viewing Agent/Needs you';
-export const SCOPES = ['https://www.googleapis.com/auth/gmail.modify'];
+export const SCOPES = [
+  'https://www.googleapis.com/auth/gmail.modify',
+  // Only used if calendar is enabled in availability.yaml: add bookings and avoid clashes.
+  'https://www.googleapis.com/auth/calendar.events',
+];
 
 const b64url = (s) => Buffer.from(s, 'utf8').toString('base64url');
 const fromB64url = (s) => Buffer.from(s ?? '', 'base64url').toString('utf8');
@@ -96,6 +100,7 @@ export class GmailClient {
   constructor({ clientId, clientSecret, refreshToken }) {
     const auth = new OAuth2Client(clientId, clientSecret);
     auth.setCredentials({ refresh_token: refreshToken });
+    this.auth = auth;
     this.api = gmailApi({ version: 'v1', auth });
     this.labelIds = {};
   }

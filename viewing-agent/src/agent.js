@@ -47,13 +47,13 @@ If none of those suit, please let me know some times that work for you.`;
  * One pass of the agent: send enquiries for new properties, then handle new replies.
  * All side effects go through `gmail` and `brain`, so tests can pass fakes.
  */
-export async function runAgent({ config, state, gmail, brain, now = DateTime.now(), dryRun = false, log = console.log, maxAutoReplies = DEFAULT_MAX_AUTO_REPLIES }) {
+export async function runAgent({ config, state, gmail, brain, calendar = null, now = DateTime.now(), dryRun = false, log = console.log, maxAutoReplies = DEFAULT_MAX_AUTO_REPLIES }) {
   const { profile, availability, properties } = config;
   const tz = profile.timezone;
   now = now.setZone(tz);
   const me = await gmail.getMyAddress();
   const notifyTo = config.notifyEmail || me;
-  const report = { enquiries: [], replies: [], bookings: [], escalations: [], skipped: [] };
+  const report = { enquiries: [], replies: [], bookings: [], escalations: [], skipped: [], errors: [] };
 
   const send = async (args) => {
     if (dryRun) {
@@ -71,7 +71,26 @@ export async function runAgent({ config, state, gmail, brain, now = DateTime.now
     log(`[notify] ${subject}`);
     if (!dryRun) await gmail.send({ to: notifyTo, subject: `[Viewing Agent] ${subject}`, body });
   };
-  const slotOpts = (excludePropertyId) => ({ now, availability, tz, bookings: bookings(state), excludePropertyId });
+  const calendarCall = async (what, fn) => {
+    if (!calendar || dryRun) return undefined;
+    try {
+      return await fn();
+    } catch (err) {
+      log(`[calendar] ${what} failed — ${err.message}`);
+      report.errors.push(`calendar ${what}: ${err.message}`);
+      return undefined;
+    }
+  };
+  let busy = [];
+  if (calendar) {
+    try {
+      busy = await calendar.busyBlocks(now, now.plus({ days: (availability.max_days_ahead ?? 14) + 1 }));
+    } catch (err) {
+      log(`[calendar] could not read busy times — ${err.message}`);
+      report.errors.push(`calendar busy times: ${err.message}`);
+    }
+  }
+  const slotOpts = (excludePropertyId) => ({ now, availability, tz, bookings: bookings(state), busy, excludePropertyId });
 
   // 1. First-contact enquiries.
   for (const property of properties.filter((p) => p.active)) {
@@ -152,22 +171,29 @@ export async function runAgent({ config, state, gmail, brain, now = DateTime.now
       decision = escalation(`Already sent ${ps.autoReplies} automatic replies for this property without settling it.`);
     } else {
       const free = allFreeSlots(slotOpts(property.id)).slice(0, 40);
-      decision = await brain.decide({
-        nowText: formatSlot(now),
-        timezone: tz,
-        profile: { name: profile.name, phone: profile.phone, tenant: profile.tenant, notes: profile.notes },
-        property: { address: property.address, listing_url: property.listing_url, agent_name: property.agent_name, notes: property.notes },
-        weeklyHours: describeWeeklyHours(availability),
-        currentBooking: ps.booking ? `${ps.booking.start} (${formatSlot(DateTime.fromISO(ps.booking.start, { zone: tz }))})` : null,
-        freeTimes: free.map((s) => `${s.toISO({ suppressSeconds: true, suppressMilliseconds: true, includeOffset: false })} — ${formatSlot(s)}`),
-        thread: thread.map((m) => ({
-          fromMe: m.fromEmail === me,
-          fromEmail: m.fromEmail,
-          subject: m.subject,
-          body: m.body,
-          dateText: formatSlot(DateTime.fromMillis(m.date, { zone: tz })),
-        })),
-      });
+      try {
+        decision = await brain.decide({
+          nowText: formatSlot(now),
+          timezone: tz,
+          profile: { name: profile.name, phone: profile.phone, tenant: profile.tenant, notes: profile.notes },
+          property: { address: property.address, listing_url: property.listing_url, agent_name: property.agent_name, notes: property.notes },
+          weeklyHours: describeWeeklyHours(availability),
+          currentBooking: ps.booking ? `${ps.booking.start} (${formatSlot(DateTime.fromISO(ps.booking.start, { zone: tz }))})` : null,
+          freeTimes: free.map((s) => `${s.toISO({ suppressSeconds: true, suppressMilliseconds: true, includeOffset: false })} — ${formatSlot(s)}`),
+          thread: thread.map((m) => ({
+            fromMe: m.fromEmail === me,
+            fromEmail: m.fromEmail,
+            subject: m.subject,
+            body: m.body,
+            dateText: formatSlot(DateTime.fromMillis(m.date, { zone: tz })),
+          })),
+        });
+      } catch (err) {
+        // Leave the email unprocessed so the next run tries again.
+        log(`${property.id}: Claude call failed, will retry next run — ${err.message}`);
+        report.errors.push(`${property.id}: ${err.message}`);
+        continue;
+      }
     }
     decision = enforcePolicy(decision, { ps, property, slotOpts: slotOpts(property.id), tz });
 
@@ -204,7 +230,19 @@ export async function runAgent({ config, state, gmail, brain, now = DateTime.now
     if (decision.action === 'confirm_booking' || decision.action === 'reschedule') {
       const start = parseTime(decision.booked_time, tz);
       const moved = ps.booking && ps.booking.start !== start.toISO();
-      ps.booking = { start: start.toISO(), confirmedAt: now.toISO(), with: latest.fromEmail };
+      const calendarEventId = await calendarCall('add viewing', () =>
+        calendar.upsertViewing({
+          eventId: ps.booking?.calendarEventId,
+          propertyId: property.id,
+          start,
+          minutes: availability.slot_minutes ?? 30,
+          address: property.address,
+          listingUrl: property.listing_url,
+          contact: latest.from,
+          timezone: tz,
+        }),
+      );
+      ps.booking = { start: start.toISO(), confirmedAt: now.toISO(), with: latest.fromEmail, calendarEventId: calendarEventId ?? ps.booking?.calendarEventId ?? null };
       ps.status = 'booked';
       report.bookings.push(property.id);
       await notify(
@@ -212,6 +250,8 @@ export async function runAgent({ config, state, gmail, brain, now = DateTime.now
         `${formatSlot(start)}\n${property.address}\n${property.listing_url ?? ''}\n\nWith: ${latest.from}\n\n${decision.summary}`,
       );
     } else if (decision.action === 'cancelled') {
+      const eventId = ps.booking?.calendarEventId;
+      if (eventId) await calendarCall('remove viewing', () => calendar.deleteViewing(eventId));
       ps.booking = null;
       ps.status = 'closed';
       await notify(`Cancelled / let: ${property.address}`, `${decision.summary}\n\nFrom: ${latest.from}\n\n${latest.body.slice(0, 2000)}`);

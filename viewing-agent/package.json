@@ -11,10 +11,14 @@
     "agent": "node src/run.js",
     "dry-run": "DRY_RUN=1 node src/run.js",
     "auth": "node scripts/auth.js",
+    "profile": "node scripts/profile.js",
+    "add-property": "node scripts/add-property.js",
+    "setup": "bash scripts/setup.sh",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
+    "@googleapis/calendar": "^20.1.0",
     "@googleapis/gmail": "^22.0.1",
     "google-auth-library": "^11.1.0",
     "luxon": "^3.7.2",
