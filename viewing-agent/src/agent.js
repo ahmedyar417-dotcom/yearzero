@@ -123,16 +123,26 @@ export async function runAgent({ config, state, gmail, brain, calendar = null, n
   }
 
   // 2. Replies. Group new messages by thread and answer only the latest in each.
+  // Emails already ruled out as unrelated are remembered, and only re-checked when the
+  // property list changes (a newly added property might match an older email).
+  const propertiesKey = JSON.stringify(properties.filter((p) => p.active).map((p) => [p.id, p.address, p.listing_url, p.agent_email]));
+  if (state.ignored?.key !== propertiesKey) state.ignored = { key: propertiesKey, ids: [] };
   const processed = new Set(state.processedMessageIds);
+  const ignored = new Set(state.ignored.ids);
   const agentSent = new Set(state.agentSentMessageIds);
-  const inbound = (await gmail.listRecentInbound({ days: 7 })).filter((m) => !processed.has(m.id) && m.fromEmail !== me);
+  const skipIds = new Set([...processed, ...ignored]);
+  const inbound = (await gmail.listRecentInbound({ days: 7, skipIds })).filter((m) => !skipIds.has(m.id) && m.fromEmail !== me);
   const byThread = new Map();
   for (const m of inbound) byThread.set(m.threadId, [...(byThread.get(m.threadId) ?? []), m]);
 
   for (const [threadId, msgs] of byThread) {
     const latest = msgs[msgs.length - 1];
     const property = matchProperty(latest, properties, state);
-    if (!property) continue; // not about any listed property — leave it alone, don't mark processed
+    if (!property) {
+      // Not about any listed property: leave it alone and don't look at it again.
+      msgs.forEach((m) => state.ignored.ids.push(m.id));
+      continue;
+    }
     const ps = propertyState(state, property.id);
     const markDone = () => msgs.forEach((m) => state.processedMessageIds.push(m.id));
 

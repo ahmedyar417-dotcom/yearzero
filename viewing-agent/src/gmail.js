@@ -113,8 +113,8 @@ export class GmailClient {
     return this.me;
   }
 
-  /** Recent messages not sent by me, oldest first. */
-  async listRecentInbound({ days = 7 } = {}) {
+  /** Recent messages not sent by me, oldest first. Ids in `skipIds` are not downloaded. */
+  async listRecentInbound({ days = 7, skipIds = new Set() } = {}) {
     const ids = [];
     let pageToken;
     do {
@@ -129,6 +129,7 @@ export class GmailClient {
     } while (pageToken && ids.length < 500);
     const msgs = [];
     for (const id of ids) {
+      if (skipIds.has(id)) continue;
       const { data } = await this.api.users.messages.get({ userId: 'me', id, format: 'full' });
       msgs.push(normaliseMessage(data));
     }

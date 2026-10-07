@@ -198,3 +198,21 @@ test('a Claude failure leaves the email for the next run and does not resend the
   assert.deepEqual(r2.replies, ['flat-a']);
   assert.equal(gmail.sent.filter((m) => /Viewing request/.test(m.subject)).length, 1);
 });
+
+test('unrelated email is skipped on later runs until the property list changes', async () => {
+  const config = makeConfig();
+  config.properties[0].send_enquiry = false;
+  const state = emptyState();
+  const gmail = new FakeGmail();
+  const brain = new FakeBrain([decision({ action: 'propose_slots', reply_body: 'Saturday 10am?' })]);
+  const m = gmail.deliver({ from: 'jo@other-agents.co.uk', subject: 'Viewing', body: 'About 9 New Street, London N9 9NN' });
+  await run({ config, state, gmail, brain });
+  assert.deepEqual(state.ignored.ids, [m.id]);
+  await run({ config, state, gmail, brain });
+  assert.equal(brain.calls.length, 0);
+
+  // You add that property: the earlier email is looked at again and answered.
+  config.properties.push({ id: 'flat-n', address: '9 New Street, London N9 9NN', agent_email: 'jo@other-agents.co.uk', active: true, send_enquiry: false });
+  const report = await run({ config, state, gmail, brain });
+  assert.deepEqual(report.replies, ['flat-n']);
+});

@@ -52,6 +52,7 @@ export function saveState(state, file = DEFAULT_STATE_PATH) {
   // Keep the id lists bounded so the file doesn't grow forever.
   state.processedMessageIds = state.processedMessageIds.slice(-2000);
   state.agentSentMessageIds = state.agentSentMessageIds.slice(-2000);
+  if (state.ignored) state.ignored.ids = state.ignored.ids.slice(-3000);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(state, null, 2) + '\n');
 }
