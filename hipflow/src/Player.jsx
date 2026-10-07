@@ -198,6 +198,7 @@ export default function Player({ session, settings, onClose, onComplete }) {
         <Figure pose={s.pose} mirror={mirror && pose?.view === "side"} playing={!paused} />
         {pose?.view === "top" && <span className="view-tag">View from above</span>}
         {pose?.view === "front" && <span className="view-tag">Front view</span>}
+        <span className="feel-tag"><i /> Feel it here</span>
       </div>
 
       <div className="player-info">

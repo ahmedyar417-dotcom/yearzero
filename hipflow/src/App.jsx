@@ -289,6 +289,7 @@ function StretchSheet({ id, onClose }) {
       <div className="demo">
         <Figure pose={s.pose} />
         {view !== "side" && <span className="view-tag">{view === "top" ? "View from above" : "Front view"}</span>}
+        <span className="feel-tag"><i /> Feel it here</span>
       </div>
       <a className="btn video" href={videoUrl(s)} target="_blank" rel="noreferrer"><Icon name="video" size={18} /> Watch video demos</a>
       <p className="target"><span style={{ color: AREAS[s.area].color }}>●</span> {s.target}</p>

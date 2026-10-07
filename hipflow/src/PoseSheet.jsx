@@ -3,10 +3,12 @@ import { POSES } from "./poses.js";
 
 // Dev-only contact sheet of every demonstration: /?sheet
 export default function PoseSheet() {
+  const only = new URLSearchParams(location.search).get("only");
+  const ids = only ? only.split(",") : Object.keys(POSES);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, padding: 8 }}>
-      {Object.keys(POSES).flatMap((id) =>
-        [0, 0.5, 1].map((k) => (
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${only ? 2 : 6}, 1fr)`, gap: 8, padding: 8 }}>
+      {ids.flatMap((id) =>
+        (only ? [0, 1] : [0, 0.5, 1]).map((k) => (
           <div key={id + k} className="card" style={{ padding: 4 }}>
             <div style={{ fontSize: 11 }}>{id} {k}</div>
             <Figure pose={id} fixedK={k} />

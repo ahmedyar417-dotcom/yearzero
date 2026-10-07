@@ -12,7 +12,7 @@
 //        "front" (floor auto-grounded, shoulders/hips drawn wide),
 //        "top" (looking down on a mat, no floor).
 
-export const LEN = { torso: 31, shoulder: 0.88, neck: 9, headR: 6.5, ua: 16, fa: 18, th: 22, sh: 21, ft: 7 };
+export const LEN = { torso: 31, shoulder: 0.88, neck: 9, headR: 5.8, ua: 16, fa: 18, th: 22, sh: 21, ft: 7 };
 const WIDE = { shoulder: 7, hip: 5 };
 
 const rad = (d) => (d * Math.PI) / 180;
@@ -142,12 +142,17 @@ export function joints(r, view) {
   };
 }
 
+// Lowest body surface (joints padded by roughly how thick the body is there).
 export function lowestY(j) {
-  const pts = [j.hip, j.neck, j.shoulder, ...j.a1, ...j.a2, ...j.l1, ...j.l2, j.shL, j.shR, j.hipL, j.hipR];
+  const padded = [
+    [j.hip, 5.5], [j.neck, 3.5], [j.shoulder, 4.5], [j.shL, 2.5], [j.shR, 2.5], [j.hipL, 4], [j.hipR, 4],
+    [j.a1[1], 2], [j.a1[2], 1.4], [j.a2[1], 2], [j.a2[2], 1.4],
+    [j.l1[1], 2.8], [j.l1[2], 1.6], [j.l1[3], 1.2], [j.l2[1], 2.8], [j.l2[2], 1.6], [j.l2[3], 1.2],
+  ];
   // torso curve midpoint
   const cm = [0.25 * j.hip[0] + 0.5 * j.ctrl[0] + 0.25 * j.neck[0], 0.25 * j.hip[1] + 0.5 * j.ctrl[1] + 0.25 * j.neck[1]];
-  let y = Math.max(...pts.map((p) => p[1]), cm[1]);
-  y = Math.max(y, j.head[1] + LEN.headR - 1);
+  let y = Math.max(...padded.map(([p, r]) => p[1] + r), cm[1] + 4.5);
+  y = Math.max(y, j.head[1] + LEN.headR * 1.05);
   return y;
 }
 
