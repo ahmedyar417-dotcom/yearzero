@@ -5,7 +5,7 @@ A phone-first app (installable PWA) with a guided **10-minute daily stretch sess
 - **5 phases × 2 weeks:** Foundation → Build Range → Active Mobility → Strength at End Range → Integration
 - **Weekly rotation:** Front of hip → Glutes & rotators → Inner thigh (twice), then a Full-Hip Flow day
 - **Guided player:** countdown ring, "get into position" and "switch sides" prompts, voice coaching, beeps, and keeps the screen awake
-- **3D coach:** a 3D person shows every stretch. During "get into position" she moves step by step into the stretch, then holds it, breathing, for exactly your hold time. On "switch sides" she comes out and goes into the other side. Each stretch also has a "Watch video demos" link (YouTube search).
+- **3D coach:** a realistic 3D person (choose a female or male coach) shows every stretch. During "get into position" the coach moves step by step into the stretch, then holds it, breathing, for exactly your hold time. On "switch sides" she comes out and goes into the other side. Each stretch also has a "Watch video demos" link (YouTube search).
 - **Personal start:** a short onboarding (goals, how tight you are, when you'll stretch, start date) and an optional daily calendar reminder
 - **Today:** your class for the day as a big card, the week at a glance, what's in the class, and a resume card if you closed the app mid-session
 - **Class preview:** duration, what you'll need (cushion, strap, blocks…), and every stretch before you start
@@ -43,4 +43,4 @@ Your existing Year Zero dashboard deployment is unaffected.
 | `src/App.jsx` + `src/screens/` | App shell and screens: onboarding, today, plan, explore, progress, class preview, completion |
 
 ## Credits
-3D character: "Michelle" (Mixamo), from the three.js example models.
+3D coaches: "Female_Adult_12" and "Male_Adult_01" from [Microsoft Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) (MIT licence, see `public/models/LICENSE-Rocketbox.txt`), converted to glTF with smaller textures.

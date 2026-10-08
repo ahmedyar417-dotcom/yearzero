@@ -18,6 +18,19 @@ const LEVELS = [
 ];
 const TIMES = [["07:30", "Morning"], ["12:30", "Lunch"], ["18:30", "Evening"], ["21:30", "Before bed"]];
 
+export function CoachPicker({ value, onChange }) {
+  return (
+    <div className="coach-pick">
+      {[["female", "Female coach"], ["male", "Male coach"]].map(([id, label]) => (
+        <button key={id} className={`coach-opt tap ${value === id ? "on" : ""}`} onClick={() => onChange(id)} aria-pressed={value === id}>
+          <Thumb3D id="butterfly" coach={id} alt="" />
+          <span>{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Opt({ on, emoji, title, sub, onClick }) {
   return (
     <button className={`opt ${on ? "on" : ""}`} onClick={onClick} aria-pressed={on}>
@@ -35,11 +48,12 @@ export default function Onboarding({ store, today, onDone }) {
   const [time, setTime] = useState("18:30");
   const [start, setStart] = useState(store.startDate >= today ? store.startDate : today);
   const [voice, setVoice] = useState(true);
+  const [coach, setCoach] = useState(store.coach || "female");
   const tomorrow = addDays(today, 1);
   const steps = 5;
   const next = () => setStep((s) => s + 1);
   const toggleGoal = (id) => setGoals((g) => (g.includes(id) ? g.filter((x) => x !== id) : [...g, id]));
-  const finish = () => onDone({ profile: { goals, level, time }, startDate: start, voice, easier: level === "very_tight" });
+  const finish = () => onDone({ profile: { goals, level, time }, startDate: start, voice, coach, easier: level === "very_tight" });
 
   let body, cta, disabled = false;
   if (step === 0) {
@@ -89,6 +103,8 @@ export default function Onboarding({ store, today, onDone }) {
           <button className={`chip ${start === tomorrow ? "on" : ""}`} onClick={() => setStart(tomorrow)}>Tomorrow</button>
           <input className="input" type="date" value={start} min={ymd(new Date())} onChange={(e) => e.target.value && setStart(e.target.value)} aria-label="Start date" />
         </div>
+        <h3 style={{ margin: "8px 2px 0" }}>Your coach</h3>
+        <CoachPicker value={coach} onChange={setCoach} />
         <label className="set-row card" style={{ padding: "6px 16px" }}>
           <span>Voice coaching</span>
           <input type="checkbox" className="switch" checked={voice} onChange={(e) => setVoice(e.target.checked)} />

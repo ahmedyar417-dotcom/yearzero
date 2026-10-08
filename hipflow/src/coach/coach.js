@@ -12,7 +12,7 @@ const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x < 0.5 ? 2 * x * x : 1 - Math.po
 
 // Resolve + ground every keyframe of a stretch for one side (cached per stage).
 export function prepareMove(stage, model, id, side) {
-  const key = `${id}:${side}`;
+  const key = `${model.root.uuid}:${id}:${side}`;
   stage.cache = stage.cache || {};
   if (stage.cache[key]) return stage.cache[key];
   const m = MOVES[id];

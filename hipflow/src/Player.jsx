@@ -214,7 +214,7 @@ export default function Player({ session, settings, resume, resumeKey, onExit, o
   return (
     <div className="pl" role="dialog" aria-label="Stretch session">
       <div className="pl-stage" onClick={() => (running ? pause() : mode === "paused" && resumeRun())}>
-        <Coach3D stretch={s.id} pose2d={s.pose} side={seg.sideIndex ?? (seg.kind === "switch" ? 1 : 0)} kind={seg.kind} segKey={i} secs={seg.secs} paused={!running} theme="dark" lift={0.02} fit={0.86} />
+        <Coach3D stretch={s.id} pose2d={s.pose} side={seg.sideIndex ?? (seg.kind === "switch" ? 1 : 0)} kind={seg.kind} segKey={i} secs={seg.secs} paused={!running} theme="dark" lift={-0.1} fit={0.8} />
         <div className="pl-top" onClick={(e) => e.stopPropagation()}>
           <div className="segs" aria-hidden="true">
             {session.items.map((_, k) => <i key={k} style={{ "--w": itemTotals[k] }}><b style={{ "--p": itemDone(k) }} /></i>)}
@@ -242,7 +242,7 @@ export default function Player({ session, settings, resume, resumeKey, onExit, o
             <h1>{s.name}</h1>
             {seg.side && <div className="side">{seg.side}</div>}
           </div>
-          <div className="big-time">{secsLeft >= 60 ? fmtTime(secsLeft) : secsLeft}<small>{seg.kind === "work" ? "seconds" : "to get set"}</small></div>
+          <div className="big-time">{secsLeft >= 60 ? fmtTime(secsLeft) : secsLeft}<small>{seg.kind !== "work" ? "to get set" : secsLeft >= 60 ? "remaining" : "seconds"}</small></div>
         </div>
         <div className={`step-bar ${seg.kind}`}><b style={{ width: `${frac * 100}%` }} /></div>
         <div className="cue">

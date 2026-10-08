@@ -5,8 +5,8 @@ import { applyPose, measure } from "./rig.js";
 
 // Two looks: a dark studio (matches the app's dark theme) and a warm light room.
 export const THEMES = {
-  dark: { bg: 0x0e1117, floor: 0x161b24, mat: 0x1f8c7e, hemi: [0xdfe6ff, 0x1a1f2a, 1.35], key: 2.9, fog: [3.2, 7.5] },
-  light: { bg: 0xeee9e1, floor: 0xd9ccb9, mat: 0x3aa596, hemi: [0xffffff, 0xb9ab98, 1.6], key: 2.4, fog: [4.5, 9] },
+  dark: { bg: 0x161a22, floor: 0x1f242e, mat: 0x1f8c7e, hemi: [0xf2f4ff, 0x3a3f4a, 2.1], key: 3.2, fill: 1.1, fog: [3.6, 8] },
+  light: { bg: 0xeee9e1, floor: 0xd9ccb9, mat: 0x3aa596, hemi: [0xffffff, 0xb9ab98, 1.8], key: 2.6, fill: 0.8, fog: [4.5, 9] },
 };
 export const currentTheme = () => {
   try {
@@ -24,7 +24,7 @@ export function createStage(canvas, { shadows = true, theme = currentTheme() } =
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.15;
   renderer.shadowMap.enabled = shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -43,9 +43,12 @@ export function createStage(canvas, { shadows = true, theme = currentTheme() } =
   key.shadow.radius = 4;
   key.shadow.bias = -0.0005;
   scene.add(key, key.target);
-  const rim = new THREE.DirectionalLight(0xdfe8ff, 0.9);
+  const rim = new THREE.DirectionalLight(0xdfe8ff, 1.1);
   rim.position.set(2, 1.5, -2.5);
-  scene.add(rim);
+  // soft front fill so faces aren't in shadow
+  const fill = new THREE.DirectionalLight(0xffffff, T.fill);
+  fill.position.set(1.5, 1.2, 3);
+  scene.add(rim, fill);
 
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardMaterial({ color: T.floor, roughness: 0.95 }));
   floor.rotation.x = -Math.PI / 2;

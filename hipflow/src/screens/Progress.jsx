@@ -4,6 +4,7 @@ import { PROGRAM_DAYS, TESTS, CHECKPOINTS, programDay, fmtDate } from "../data/p
 import { listPhotos, addPhoto, deletePhoto } from "../photos.js";
 import { downloadReminder } from "../reminder.js";
 import { streaks, doneDaySet } from "../lib.js";
+import { CoachPicker } from "./Onboarding.jsx";
 
 const POSES = [["pigeon", "Pigeon"], ["butterfly", "Butterfly"], ["squat", "Deep squat"], ["split", "Half split"], ["any", "Other"]];
 
@@ -147,6 +148,9 @@ export default function Progress({ store, update, today, openTests }) {
           ))}
         </div>
       </div>
+
+      <div className="section-head"><h3>Your coach</h3></div>
+      <CoachPicker value={store.coach} onChange={(coach) => update({ coach })} />
 
       <div className="section-head"><h3>Settings</h3></div>
       <div className="card settings">

@@ -1,4 +1,4 @@
-// Poses the 3D human (a Mixamo-rigged glTF) from a compact description.
+// Poses a rigged 3D human (Rocketbox/Biped or Mixamo skeleton) from a compact description.
 //
 // Coordinates: the character faces +Z, +X is her LEFT, +Y is up. Units are cm.
 // A pose spec:
@@ -49,28 +49,75 @@ function anyPerp(d) {
   return ortho(Math.abs(d.y) < 0.9 ? Y : Z, d);
 }
 
-export const MODEL_URL = "/models/Michelle.glb";
-let gltfPromise = null;
+// The coaches: realistic Rocketbox avatars (MIT) and the original stylised one.
+export const COACHES = {
+  female: { url: "/models/coach-female.glb", label: "Female coach" },
+  male: { url: "/models/coach-male.glb", label: "Male coach" },
+};
+export const MODEL_URL = COACHES.female.url;
+
+// Rocketbox (3ds Max Biped) bone names → the canonical names used here.
+const BIPED = {
+  Hips: "Bip01 Pelvis", Spine: "Bip01 Spine", Spine1: "Bip01 Spine1", Spine2: "Bip01 Spine2", Neck: "Bip01 Neck", Head: "Bip01 Head",
+};
+for (const [s, b] of [["Left", "L"], ["Right", "R"]]) {
+  Object.assign(BIPED, {
+    [s + "Shoulder"]: `Bip01 ${b} Clavicle`, [s + "Arm"]: `Bip01 ${b} UpperArm`, [s + "ForeArm"]: `Bip01 ${b} Forearm`,
+    [s + "Hand"]: `Bip01 ${b} Hand`, [s + "HandMiddle1"]: `Bip01 ${b} Finger2`,
+    [s + "UpLeg"]: `Bip01 ${b} Thigh`, [s + "Leg"]: `Bip01 ${b} Calf`, [s + "Foot"]: `Bip01 ${b} Foot`, [s + "ToeBase"]: `Bip01 ${b} Toe0`,
+  });
+}
+const FROM_BIPED = Object.fromEntries(Object.entries(BIPED).map(([k, v]) => [v, k]));
+// (three.js turns spaces in node names into underscores)
+const keyFor = (name) => FROM_BIPED[name.replace(/_/g, " ")] || name.replace("mixamorig", "");
+
+const gltfs = {};
 // Each stage gets its own copy of the character (a three.js object can only
 // live in one scene), cloned from the untouched original in its rest pose.
 export function loadModel(url = MODEL_URL) {
-  if (!gltfPromise) gltfPromise = new GLTFLoader().loadAsync(url);
-  return gltfPromise.then((gltf) => prepare(cloneSkinned(gltf.scene), gltf.animations));
+  if (!gltfs[url]) gltfs[url] = new GLTFLoader().loadAsync(url);
+  return gltfs[url].then((gltf) => {
+    const body = cloneSkinned(gltf.scene);
+    const root = new THREE.Group();
+    root.add(body);
+    faceForward(root);
+    return prepare(root, gltf.animations);
+  });
+}
+export const preloadModel = (url = MODEL_URL) => loadModel(url).catch(() => null);
+
+// Turn the character so she faces +Z (her left on +X), whatever the source file did.
+function faceForward(root) {
+  root.updateMatrixWorld(true);
+  const find = (n) => root.getObjectByName(n);
+  const lArm = find("Bip01_L_UpperArm") || find("mixamorigLeftArm");
+  const rArm = find("Bip01_R_UpperArm") || find("mixamorigRightArm");
+  if (!lArm || !rArm) return;
+  const l = lArm.getWorldPosition(new THREE.Vector3()), r = rArm.getWorldPosition(new THREE.Vector3());
+  const left = l.sub(r).setY(0).normalize(); // should point to +X
+  root.rotation.y = -Math.atan2(-left.z, left.x);
+  root.updateMatrixWorld(true);
 }
 
 function prepare(root, animations) {
   root.updateMatrixWorld(true);
   const bones = {};
-  let mesh = null;
+  const keyOf = new Map();
+  const meshes = [];
   root.traverse((o) => {
-    if (o.isBone) bones[o.name.replace("mixamorig", "")] = o;
-    if (o.isSkinnedMesh) mesh = o;
+    if (o.isBone) {
+      const k = keyFor(o.name);
+      bones[k] = o;
+      keyOf.set(o, k);
+    }
+    if (o.isSkinnedMesh) meshes.push(o);
   });
   const rest = {};
   for (const [name, b] of Object.entries(bones)) {
     const p = new THREE.Vector3(); b.getWorldPosition(p);
     const q = new THREE.Quaternion(); b.getWorldQuaternion(q);
-    rest[name] = { pos: p, worldQ: q, localQ: b.quaternion.clone() };
+    const pq = new THREE.Quaternion(); b.parent.getWorldQuaternion(pq);
+    rest[name] = { pos: p, worldQ: q, localQ: b.quaternion.clone(), parentQ: pq };
   }
   const dirOf = (n) => rest[CHILD[n]].pos.clone().sub(rest[n].pos).normalize();
   const lenOf = (a, b) => rest[b].pos.distanceTo(rest[a].pos) * 100;
@@ -96,11 +143,12 @@ function prepare(root, animations) {
   };
   // order bones parent-first for applying world rotations
   const order = [];
-  root.traverse((o) => o.isBone && order.push(o.name.replace("mixamorig", "")));
-  const charQ = new THREE.Quaternion(); bones.Hips.parent.getWorldQuaternion(charQ);
-  mesh.frustumCulled = false;
-  mesh.castShadow = true;
-  return { root, bones, mesh, rest, frames, dims, order, charQ, animations };
+  root.traverse((o) => o.isBone && order.push(keyOf.get(o)));
+  for (const m of meshes) {
+    m.frustumCulled = false;
+    m.castShadow = true;
+  }
+  return { root, bones, keyOf, mesh: meshes[0], meshes, rest, frames, dims, order, animations };
 }
 
 // ── Pose resolution ──────────────────────────────────────────────────────
@@ -214,12 +262,12 @@ export function blend(a, b, t) {
 
 const tmpQ = new THREE.Quaternion();
 export function applyPose(model, pose, extra) {
-  const { bones, rest, order, charQ } = model;
+  const { bones, rest, order, keyOf } = model;
   const world = {};
   for (const name of order) {
     const b = bones[name];
-    const parentName = b.parent?.isBone ? b.parent.name.replace("mixamorig", "") : null;
-    const parentW = parentName ? world[parentName] : charQ;
+    const parentName = b.parent?.isBone ? keyOf.get(b.parent) : null;
+    const parentW = parentName ? world[parentName] : rest[name].parentQ;
     let w = pose.q[name];
     if (!w) {
       // not posed: keep its rest offset from the parent
@@ -237,15 +285,17 @@ export { mirror as mirrorSpec } from "./dirs.js";
 // Lowest point and bounds of the actual skinned mesh for the current pose (cm, group-local).
 const vtx = new THREE.Vector3();
 export function measure(model, step = 3) {
-  const { mesh, root } = model;
+  const { meshes, root } = model;
   root.updateMatrixWorld(true);
-  mesh.skeleton.update();
   const box = new THREE.Box3();
-  const n = mesh.geometry.attributes.position.count;
-  for (let i = 0; i < n; i += step) {
-    mesh.getVertexPosition(i, vtx);
-    vtx.applyMatrix4(mesh.matrixWorld);
-    box.expandByPoint(vtx);
+  for (const mesh of meshes) {
+    mesh.skeleton.update();
+    const n = mesh.geometry.attributes.position.count;
+    for (let i = 0; i < n; i += step) {
+      mesh.getVertexPosition(i, vtx);
+      vtx.applyMatrix4(mesh.matrixWorld);
+      box.expandByPoint(vtx);
+    }
   }
   return box;
 }

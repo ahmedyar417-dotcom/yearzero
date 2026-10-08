@@ -13,6 +13,8 @@ import Progress from "./screens/Progress.jsx";
 import Overview from "./screens/Overview.jsx";
 import Complete from "./screens/Complete.jsx";
 import { StretchSheet, TestSheet } from "./screens/sheets.jsx";
+import { CoachContext } from "./coach/CoachContext.js";
+import { COACHES, preloadModel } from "./coach/rig.js";
 
 const TABS = [
   ["today", "Today", "today"],
@@ -39,6 +41,8 @@ export default function App() {
   }, []);
   useEffect(() => { if (!playing) setActive(activeSession.get()); }, [playing]);
   useEffect(() => { window.scrollTo(0, 0); }, [tab]);
+  // fetch the coach early so the first class starts instantly
+  useEffect(() => { preloadModel((COACHES[store.coach] || COACHES.female).url); }, [store.coach]);
 
   const settings = useMemo(() => ({ voice: store.voice, beeps: store.beeps, easier: store.easier }), [store.voice, store.beeps, store.easier]);
   const started = programDay(store.startDate, today) >= 1;
@@ -69,10 +73,11 @@ export default function App() {
   };
   const rate = (feel) => finished?.at && update((s) => ({ sessions: s.sessions.map((r) => (r.at === finished.at ? { ...r, feel } : r)) }));
 
-  if (!store.profile) return <Onboarding store={store} today={today} onDone={(p) => update(p)} />;
+  const withCoach = (el) => <CoachContext.Provider value={store.coach}>{el}</CoachContext.Provider>;
+  if (!store.profile) return withCoach(<Onboarding store={store} today={today} onDone={(p) => update(p)} />);
 
   if (playing) {
-    return (
+    return withCoach(
       <Player
         key={playing.key + (playing.resume ? ":r" : "")}
         session={playing.session} settings={settings} resume={playing.resume} resumeKey={playing.key}
@@ -109,7 +114,7 @@ export default function App() {
     }
   }
 
-  return (
+  return withCoach(
     <div className="app">
       <main>
         {tab === "today" && (

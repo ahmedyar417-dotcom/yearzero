@@ -6,6 +6,7 @@ const DEFAULTS = {
   startDate: DEFAULT_START, voice: true, beeps: true, sessions: [], tests: {},
   profile: null, // { goals: [], level, time } once onboarding is done
   easier: false, // show the easier option during holds
+  coach: "female", // female | male
 };
 
 function load() {

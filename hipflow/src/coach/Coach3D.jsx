@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { createStage } from "./stage.js";
-import { loadModel, blend } from "./rig.js";
+import { loadModel, blend, COACHES } from "./rig.js";
+import { CoachContext } from "./CoachContext.js";
 import { prepareMove, buildTimeline, sampleTimeline, sampleLoop, breathing } from "./coach.js";
 import Figure from "../Figure.jsx";
 
@@ -16,10 +17,13 @@ function webglOk() {
 
 // The 3D coach. `kind` is prep | switch | work | demo; a new `segKey` restarts it.
 // theme: "dark" | "light" (default follows the app); lift: room to leave below her for overlays (0..0.4)
-export default function Coach3D({ stretch, pose2d, side = 0, kind = "demo", segKey = 0, secs = 10, paused = false, theme, lift = 0, fit = 1 }) {
+export default function Coach3D({ stretch, pose2d, side = 0, kind = "demo", segKey = 0, secs = 10, paused = false, theme, lift = 0, fit = 1, coach }) {
+  const ctxCoach = useContext(CoachContext);
+  const url = (COACHES[coach || ctxCoach] || COACHES.female).url;
   const wrapRef = useRef(null);
   const live = useRef({});
   const [status, setStatus] = useState(() => (webglOk() ? "loading" : "fallback"));
+  const [loaded, setLoaded] = useState(0); // bumps each time a (new) character finishes loading
 
   // mount: stage, model, render loop
   useEffect(() => {
@@ -45,11 +49,12 @@ export default function Coach3D({ stretch, pose2d, side = 0, kind = "demo", segK
     const ro = new ResizeObserver(fit);
     ro.observe(wrapRef.current);
     fit();
-    loadModel().then((model) => {
+    loadModel(url).then((model) => {
       if (disposed) return;
       L.model = model;
       stage.setModel(model);
       setStatus("ready");
+      setLoaded((n) => n + 1);
     }).catch((e) => {
       console.warn("3D coach failed to load:", e);
       if (!disposed) setStatus("fallback");
@@ -73,7 +78,7 @@ export default function Coach3D({ stretch, pose2d, side = 0, kind = "demo", segK
       canvas.remove();
       L.model = L.prep = L.cur = null;
     };
-  }, [status === "fallback"]);
+  }, [status === "fallback", url]);
 
   // (re)start the performance when the segment changes
   useEffect(() => {
@@ -92,7 +97,7 @@ export default function Coach3D({ stretch, pose2d, side = 0, kind = "demo", segK
     L.camTarget = L.stage.frame(prep.box, prep.az, prep.el, lift, fit);
     if (!from) L.camNow = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, stretch, side, kind, segKey, lift, fit]);
+  }, [status, loaded, stretch, side, kind, segKey, lift, fit]);
 
   useEffect(() => {
     live.current.paused = paused;
