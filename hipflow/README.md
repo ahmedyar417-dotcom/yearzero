@@ -6,7 +6,13 @@ A phone-first app (installable PWA) with a guided **10-minute daily stretch sess
 - **Weekly rotation:** Front of hip → Glutes & rotators → Inner thigh (twice), then a Full-Hip Flow day
 - **Guided player:** countdown ring, "get into position" and "switch sides" prompts, voice coaching, beeps, and keeps the screen awake
 - **3D coach:** a 3D person shows every stretch. During "get into position" she moves step by step into the stretch, then holds it, breathing, for exactly your hold time. On "switch sides" she comes out and goes into the other side. Each stretch also has a "Watch video demos" link (YouTube search).
-- **Progress:** streaks, a 10-week calendar, and mobility tests at weeks 1, 5 and 10
+- **Personal start:** a short onboarding (goals, how tight you are, when you'll stretch, start date) and an optional daily calendar reminder
+- **Today:** your class for the day as a big card, the week at a glance, what's in the class, and a resume card if you closed the app mid-session
+- **Class preview:** duration, what you'll need (cushion, strap, blocks…), and every stretch before you start
+- **Full-screen player:** 3-2-1 start, a progress bar per stretch, step-by-step instructions while she gets into position, cues during holds, an "up next" card, tap to pause, landscape layout
+- **After each class:** a celebration with minutes, stretches and streak, and a quick "how did that feel?" rating. Two "too intense" ratings in a row suggest switching on the easier options
+- **Explore:** six quick sessions (5–15 min) and the searchable stretch library
+- **Progress:** streaks, a 10-week calendar, progress photos with a before/after slider (stored only on the phone), and mobility tests at weeks 1, 5 and 10
 - Progress is saved on the device (localStorage). No account needed.
 
 ## Run locally
@@ -34,7 +40,7 @@ Your existing Year Zero dashboard deployment is unaffected.
 | `src/coach/Coach3D.jsx` + `coach.js` + `stage.js` | The 3D scene, timing it to the session player, thumbnails |
 | `src/poses.js` + `src/figure.js` + `src/body.js` | 2D illustrated fallback for devices without WebGL |
 | `src/Player.jsx` | Guided session player |
-| `src/App.jsx` | Today / Plan / Stretches / Progress screens |
+| `src/App.jsx` + `src/screens/` | App shell and screens: onboarding, today, plan, explore, progress, class preview, completion |
 
 ## Credits
 3D character: "Michelle" (Mixamo), from the three.js example models.

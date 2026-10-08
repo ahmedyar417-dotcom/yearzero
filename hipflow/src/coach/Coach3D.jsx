@@ -15,7 +15,8 @@ function webglOk() {
 }
 
 // The 3D coach. `kind` is prep | switch | work | demo; a new `segKey` restarts it.
-export default function Coach3D({ stretch, pose2d, side = 0, kind = "demo", segKey = 0, secs = 10, paused = false }) {
+// theme: "dark" | "light" (default follows the app); lift: room to leave below her for overlays (0..0.4)
+export default function Coach3D({ stretch, pose2d, side = 0, kind = "demo", segKey = 0, secs = 10, paused = false, theme, lift = 0, fit = 1 }) {
   const wrapRef = useRef(null);
   const live = useRef({});
   const [status, setStatus] = useState(() => (webglOk() ? "loading" : "fallback"));
@@ -29,7 +30,7 @@ export default function Coach3D({ stretch, pose2d, side = 0, kind = "demo", segK
     wrapRef.current.prepend(canvas);
     let stage;
     try {
-      stage = createStage(canvas);
+      stage = createStage(canvas, theme ? { theme } : undefined);
     } catch (e) {
       console.warn("3D coach unavailable:", e);
       setStatus("fallback");
@@ -88,16 +89,16 @@ export default function Coach3D({ stretch, pose2d, side = 0, kind = "demo", segK
     L.from = from;
     L.tl = kind === "work" ? null : buildTimeline(kind, prep, from, secs, other);
     setProps(L, prep);
-    L.camTarget = L.stage.frame(prep.box, prep.az, prep.el);
+    L.camTarget = L.stage.frame(prep.box, prep.az, prep.el, lift, fit);
     if (!from) L.camNow = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, stretch, side, kind, segKey]);
+  }, [status, stretch, side, kind, segKey, lift, fit]);
 
   useEffect(() => {
     live.current.paused = paused;
   }, [paused]);
 
-  if (status === "fallback") return pose2d ? <Figure pose={pose2d} mirror={side === 1} playing={!paused} /> : null;
+  if (status === "fallback") return pose2d ? <div className="figure-wrap"><Figure pose={pose2d} mirror={side === 1} playing={!paused} /></div> : null;
   return (
     <div ref={wrapRef} className="coach3d">
       {status === "loading" && <div className="coach-loading">Loading coach…</div>}

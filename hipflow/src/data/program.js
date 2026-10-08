@@ -88,21 +88,21 @@ export function sessionFor(day) {
     if (!s) throw new Error(`Unknown stretch ${id}`);
     return { stretch: s, secs, note, sides: s.bilateral ? 2 : 1 };
   });
-  fitToTarget(items);
+  fitToTarget(items, SESSION_SECS);
   return { day: d, week, phase, type, dayType: DAY_TYPES[type], items, totalSecs: totalSecs(items) };
 }
 
 export const SESSION_SECS = 600;
 
-// Scale the authored holds so every session lasts exactly SESSION_SECS,
+// Scale the authored holds so a session lasts exactly `target` seconds,
 // keeping their proportions (rounded to 5s; the last item absorbs the rest).
-function fitToTarget(items) {
+export function fitToTarget(items, target) {
   const fixed = items.reduce((t, it) => t + PREP_SECS + (it.sides - 1) * SWITCH_SECS, 0);
   const work = items.reduce((t, it) => t + it.secs * it.sides, 0);
-  const k = (SESSION_SECS - fixed) / work;
+  const k = (target - fixed) / work;
   for (const it of items) it.secs = Math.max(20, Math.round((it.secs * k) / 5) * 5);
   const last = items[items.length - 1];
-  last.secs += (SESSION_SECS - totalSecs(items)) / last.sides;
+  last.secs = Math.max(15, last.secs + (target - totalSecs(items)) / last.sides);
 }
 
 export function totalSecs(items) {
