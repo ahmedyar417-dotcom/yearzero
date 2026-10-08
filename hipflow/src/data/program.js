@@ -1,8 +1,8 @@
 import { BY_ID } from "./stretches.js";
 
 export const PROGRAM_DAYS = 70;
-export const PREP_SECS = 5; // "get into position"
-export const SWITCH_SECS = 5; // between sides
+export const PREP_SECS = 12; // "get into position": the coach shows how, step by step
+export const SWITCH_SECS = 9; // come out of side one, go into side two
 
 export const PHASES = [
   {

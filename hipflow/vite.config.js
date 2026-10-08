@@ -24,7 +24,7 @@ export default defineConfig({
           { src: "pwa-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
         ],
       },
-      workbox: { globPatterns: ["**/*.{js,css,html,png,svg}"] },
+      workbox: { globPatterns: ["**/*.{js,css,html,png,svg,glb}"], maximumFileSizeToCacheInBytes: 6 * 1024 * 1024 },
     }),
   ],
 });

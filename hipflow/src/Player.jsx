@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import Figure from "./Figure.jsx";
-import { POSES } from "./poses.js";
+import Coach3D from "./coach/Coach3D.jsx";
 import { buildTimeline, fmtTime } from "./data/program.js";
 import { Icon } from "./ui.jsx";
 
@@ -176,8 +175,6 @@ export default function Player({ session, settings, onClose, onComplete }) {
   }
 
   const s = seg.item.stretch;
-  const pose = POSES[s.pose];
-  const mirror = seg.sideIndex === 1 || (seg.kind === "switch");
   const frac = 1 - left / (seg.secs * 1000);
   const R = 46;
   const C = 2 * Math.PI * R;
@@ -195,10 +192,7 @@ export default function Player({ session, settings, onClose, onComplete }) {
       </div>
 
       <div className={`player-stage ${seg.kind}`}>
-        <Figure pose={s.pose} mirror={mirror && pose?.view === "side"} playing={!paused} />
-        {pose?.view === "top" && <span className="view-tag">View from above</span>}
-        {pose?.view === "front" && <span className="view-tag">Front view</span>}
-        <span className="feel-tag"><i /> Feel it here</span>
+        <Coach3D stretch={s.id} pose2d={s.pose} side={seg.sideIndex ?? (seg.kind === "switch" ? 1 : 0)} kind={seg.kind} segKey={i} secs={seg.secs} paused={paused} />
       </div>
 
       <div className="player-info">

@@ -95,7 +95,7 @@ export const STRETCHES = [
     target: "Hip flexors, groin",
     how: [
       "From kneeling, step one foot forward into a long lunge, back knee down.",
-      "Put your hands on blocks or books beside your front foot.",
+      "Rest your hands on your front knee (or on blocks beside your front foot).",
       "Let your hips sink forward and down. Keep breathing.",
     ],
     cues: ["Front knee stays over your ankle or behind it", "Relax your shoulders away from your ears"],

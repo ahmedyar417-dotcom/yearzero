@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import Figure from "./Figure.jsx";
+import Coach3D from "./coach/Coach3D.jsx";
+import Thumb3D from "./coach/Thumb3D.jsx";
 import Player, { unlockAudio } from "./Player.jsx";
 import { POSES } from "./poses.js";
 import { Icon, Sheet } from "./ui.jsx";
@@ -32,8 +33,8 @@ function streaks(sessions, today) {
   return { current, best };
 }
 
-const Thumb = ({ pose }) => (
-  <div className="thumb"><Figure pose={pose} fixedK={1} /></div>
+const Thumb = ({ id }) => (
+  <div className="thumb"><Thumb3D id={id} /></div>
 );
 
 // ── Today ────────────────────────────────────────────────────────────────
@@ -107,7 +108,7 @@ function Today({ store, today, onStart, openStretch, openTests }) {
       <div className="list card">
         {session.items.map((it, n) => (
           <button key={n} className="row" onClick={() => openStretch(it.stretch.id)}>
-            <Thumb pose={it.stretch.pose} />
+            <Thumb id={it.stretch.id} />
             <div className="row-main">
               <b>{it.stretch.name}</b>
               <span className="muted">{AREAS[it.stretch.area].label}{it.note ? " · " + (it.note.startsWith("Contract") ? "contract-relax" : "variation") : ""}</span>
@@ -185,7 +186,7 @@ function Library({ openStretch }) {
       <div className="grid">
         {list.map((s) => (
           <button key={s.id} className="card tile" onClick={() => openStretch(s.id)}>
-            <Figure pose={s.pose} fixedK={1} />
+            <Thumb3D id={s.id} alt={s.name} />
             <b>{s.name}</b>
             <span className="muted small">{AREAS[s.area].label}</span>
           </button>
@@ -283,13 +284,10 @@ function Progress({ store, update, today, openTests }) {
 // ── Sheets ───────────────────────────────────────────────────────────────
 function StretchSheet({ id, onClose }) {
   const s = BY_ID[id];
-  const view = POSES[s.pose]?.view;
   return (
     <Sheet title={s.name} onClose={onClose}>
       <div className="demo">
-        <Figure pose={s.pose} />
-        {view !== "side" && <span className="view-tag">{view === "top" ? "View from above" : "Front view"}</span>}
-        <span className="feel-tag"><i /> Feel it here</span>
+        <Coach3D stretch={s.id} pose2d={s.pose} kind="demo" />
       </div>
       <a className="btn video" href={videoUrl(s)} target="_blank" rel="noreferrer"><Icon name="video" size={18} /> Watch video demos</a>
       <p className="target"><span style={{ color: AREAS[s.area].color }}>●</span> {s.target}</p>
@@ -316,7 +314,7 @@ function SessionSheet({ day, store, today, onStart, openStretch, onClose }) {
       <div className="list card">
         {s.items.map((it, n) => (
           <button key={n} className="row" onClick={() => openStretch(it.stretch.id)}>
-            <Thumb pose={it.stretch.pose} />
+            <Thumb id={it.stretch.id} />
             <div className="row-main"><b>{it.stretch.name}</b><span className="muted">{it.note || AREAS[it.stretch.area].label}</span></div>
             <span className="row-time">{it.sides === 2 ? `${it.secs}s × 2` : fmtTime(it.secs)}</span>
           </button>
