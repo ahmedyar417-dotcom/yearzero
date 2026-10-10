@@ -26,6 +26,12 @@ async function main() {
     clientSecret: env.GMAIL_CLIENT_SECRET,
     refreshToken: env.GMAIL_REFRESH_TOKEN,
   });
+  const brain = new Brain({ apiKey: env.ANTHROPIC_API_KEY, model: env.CLAUDE_MODEL, workspaceId: env.ANTHROPIC_WORKSPACE_ID });
+  if (dryRun) {
+    await brain.check();
+    console.log('Claude API key: OK');
+  }
+
   let report;
   try {
     report = await runAgent({
@@ -34,7 +40,7 @@ async function main() {
       dryRun,
       gmail,
       calendar: config.availability.calendar?.enabled ? new CalendarClient(gmail.auth) : null,
-      brain: new Brain({ apiKey: env.ANTHROPIC_API_KEY, model: env.CLAUDE_MODEL }),
+      brain,
     });
   } finally {
     // Save even if the run failed partway, so emails already sent are never sent twice.
@@ -44,6 +50,7 @@ async function main() {
       saveState(state, statePath);
     }
   }
+  console.log(`Gmail: OK (${await gmail.getMyAddress()})`);
   console.log('\nSummary:', JSON.stringify(report, null, 2));
   if (report.errors.length) process.exitCode = 1;
 }

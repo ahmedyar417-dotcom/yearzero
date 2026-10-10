@@ -5,7 +5,7 @@
   "description": "Emails letting agents and books rental property viewings on your behalf (Gmail + Claude).",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "agent": "node src/run.js",

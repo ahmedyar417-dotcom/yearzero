@@ -80,9 +80,16 @@ Decide how to respond to the latest email from THEM.`;
 }
 
 export class Brain {
-  constructor({ apiKey, model } = {}) {
-    this.client = new Anthropic(apiKey ? { apiKey } : {});
+  constructor({ apiKey, model, workspaceId } = {}) {
+    // Keys not scoped to a workspace must name one on every request.
+    const defaultHeaders = workspaceId ? { 'anthropic-workspace-id': workspaceId } : undefined;
+    this.client = new Anthropic({ ...(apiKey ? { apiKey } : {}), defaultHeaders });
     this.model = model || 'claude-opus-5-5';
+  }
+
+  /** Confirm the API key works without generating anything (token counting is free). */
+  async check() {
+    await this.client.messages.countTokens({ model: this.model, messages: [{ role: 'user', content: 'ping' }] });
   }
 
   /** @returns {Promise<{action, reply_body, booked_time, summary, escalation_reason}>} */
