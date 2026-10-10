@@ -48,7 +48,7 @@ test('full happy path: enquiry → they offer a time → booked', async () => {
   // The model saw the thread and only free times.
   const ctx = brain.calls[0];
   assert.equal(ctx.thread.length, 2);
-  assert.ok(ctx.freeTimes.some((t) => t.startsWith('2026-10-08T18:00')));
+  assert.ok(ctx.freeTimes.some((t) => t.startsWith('2026-10-08') && /from 17:30 to 19:30/.test(t)));
 
   // Already-processed messages are not handled twice.
   await run({ config, state, gmail, brain });
@@ -215,4 +215,23 @@ test('unrelated email is skipped on later runs until the property list changes',
   config.properties.push({ id: 'flat-n', address: '9 New Street, London N9 9NN', agent_email: 'jo@other-agents.co.uk', active: true, send_enquiry: false });
   const report = await run({ config, state, gmail, brain });
   assert.deepEqual(report.replies, ['flat-n']);
+});
+
+test('free times cover the whole booking window, and duplicate sign-offs are removed', async () => {
+  const { stripSignOff } = await import('../src/agent.js');
+  const profile = { name: 'Ahmad Yar' };
+  assert.equal(stripSignOff('Hi Sarah,\n\nSee you then.\n\nKind regards\n', profile), 'Hi Sarah,\n\nSee you then.');
+  assert.equal(stripSignOff('Hi,\n\nThanks for this.\n\nMany thanks,\nAhmad', profile), 'Hi,\n\nThanks for this.');
+  assert.equal(stripSignOff('Hi,\n\nThanks for getting back to me.', profile), 'Hi,\n\nThanks for getting back to me.');
+
+  const config = makeConfig();
+  const state = emptyState();
+  const gmail = new FakeGmail();
+  const brain = new FakeBrain([decision({ action: 'no_reply' })]);
+  await run({ config, state, gmail, brain });
+  gmail.deliver({ from: 'lettings@acme-agents.co.uk', subject: 'Re', body: 'Saturday 17th?', threadId: gmail.sent[0].threadId });
+  await run({ config, state, gmail, brain });
+  const lines = brain.calls[0].freeTimes;
+  assert.ok(lines.some((l) => l.startsWith('2026-10-17') && /from 10:00 to 15:30/.test(l)), lines.join('\n'));
+  assert.ok(lines.some((l) => l.startsWith('2026-10-20')));
 });

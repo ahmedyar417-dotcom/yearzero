@@ -99,6 +99,25 @@ export function suggestSlots(opts, count = 3) {
   return picks;
 }
 
+/**
+ * Free start times grouped per day into ranges, one line per day, e.g.
+ * "2026-10-17 (Saturday 17 October): any start from 09:00 to 18:30".
+ */
+export function describeFreeRanges(slots) {
+  const byDay = new Map();
+  for (const t of slots) byDay.set(t.toISODate(), [...(byDay.get(t.toISODate()) ?? []), t]);
+  return [...byDay.values()].map((day) => {
+    const ranges = [];
+    for (const t of day) {
+      const last = ranges.at(-1);
+      if (last && t.diff(last[1], 'minutes').minutes === 30) last[1] = t;
+      else ranges.push([t, t]);
+    }
+    const text = ranges.map(([a, b]) => (a.equals(b) ? `at ${a.toFormat('HH:mm')}` : `from ${a.toFormat('HH:mm')} to ${b.toFormat('HH:mm')}`)).join(', or ');
+    return `${day[0].toISODate()} (${day[0].toFormat('cccc d LLLL')}): any start ${text}`;
+  });
+}
+
 /** "Thursday 8 October, 6:30pm" */
 export function formatSlot(dt) {
   return `${dt.toFormat('cccc d LLLL')}, ${dt.toFormat('h:mma').toLowerCase()}`;

@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import { allFreeSlots, checkSlot, describeWeeklyHours, formatSlot, parseTime, suggestSlots } from './availability.js';
+import { allFreeSlots, checkSlot, describeFreeRanges, describeWeeklyHours, formatSlot, parseTime, suggestSlots } from './availability.js';
 import { escalation } from './brain.js';
 import { LABEL_MAIN, LABEL_NEEDS_YOU } from './gmail.js';
 import { matchProperty } from './matcher.js';
@@ -23,7 +23,24 @@ function bookings(state) {
     .map(([propertyId, s]) => ({ propertyId, start: s.booking.start }));
 }
 
+// Sign-off lines the model sometimes adds even though the signature is appended automatically.
+const SIGN_OFF = /^(kind|best|warm|many)?\s*(regards|wishes|thanks|thank you|cheers)[,.!]?$|^(thanks|cheers|best|regards)[,.!]?$/i;
+
+export function stripSignOff(body, profile) {
+  const first = (profile.name ?? '').split(' ')[0].toLowerCase();
+  const lines = body.trim().split('\n');
+  for (;;) {
+    const last = (lines.at(-1) ?? '').trim();
+    if (!last || SIGN_OFF.test(last) || (first && last.toLowerCase() === first) || last.toLowerCase() === (profile.name ?? '').toLowerCase()) {
+      lines.pop();
+      if (!lines.length) break;
+    } else break;
+  }
+  return lines.join('\n');
+}
+
 function withSignature(body, profile) {
+  body = stripSignOff(body, profile);
   return `${body.trim()}\n\n${(profile.signature ?? profile.name).trim()}\n${profile.phone ? `${profile.phone}\n` : ''}`;
 }
 
@@ -180,7 +197,7 @@ export async function runAgent({ config, state, gmail, brain, calendar = null, n
     if (ps.autoReplies >= maxAutoReplies) {
       decision = escalation(`Already sent ${ps.autoReplies} automatic replies for this property without settling it.`);
     } else {
-      const free = allFreeSlots(slotOpts(property.id)).slice(0, 40);
+      const free = allFreeSlots(slotOpts(property.id));
       try {
         decision = await brain.decide({
           nowText: formatSlot(now),
@@ -189,7 +206,7 @@ export async function runAgent({ config, state, gmail, brain, calendar = null, n
           property: { address: property.address, listing_url: property.listing_url, agent_name: property.agent_name, notes: property.notes },
           weeklyHours: describeWeeklyHours(availability),
           currentBooking: ps.booking ? `${ps.booking.start} (${formatSlot(DateTime.fromISO(ps.booking.start, { zone: tz }))})` : null,
-          freeTimes: free.map((s) => `${s.toISO({ suppressSeconds: true, suppressMilliseconds: true, includeOffset: false })} — ${formatSlot(s)}`),
+          freeTimes: describeFreeRanges(free),
           thread: thread.map((m) => ({
             fromMe: m.fromEmail === me,
             fromEmail: m.fromEmail,
