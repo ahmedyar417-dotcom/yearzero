@@ -86,12 +86,15 @@ export function allFreeSlots({ now, availability, tz, bookings = [], busy = [], 
 }
 
 /** A short, spread-out list of slots to offer: the first free time on each of the next few days. */
-export function suggestSlots(opts, count = 3) {
+export function suggestSlots(opts, count = 3, avoid = []) {
+  // Keep clear of times already offered to other agents, so two can't both accept the same slot.
+  const gap = (opts.availability.slot_minutes ?? 30) + (opts.availability.buffer_minutes ?? 60);
   const seen = new Set();
   const picks = [];
   for (const t of allFreeSlots(opts)) {
     const key = t.toISODate();
     if (seen.has(key)) continue;
+    if (avoid.some((a) => Math.abs(t.diff(a, 'minutes').minutes) < gap)) continue;
     seen.add(key);
     picks.push(t);
     if (picks.length >= count) break;

@@ -127,6 +127,7 @@ export async function runAgent({ config, state, gmail, brain, calendar = null, r
     try {
       found = await resolver.resolve(property.listing_url);
     } catch (err) {
+      delete ps.lookupAt; // an error (e.g. no credit) isn't a "not found": retry next run
       log(`${property.id}: listing lookup failed — ${err.message}`);
       report.errors.push(`${property.id} lookup: ${err.message}`);
       continue;
@@ -160,7 +161,9 @@ export async function runAgent({ config, state, gmail, brain, calendar = null, r
       report.skipped.push(`${property.id}: no agent email to send the enquiry to yet`);
       continue;
     }
-    const slots = suggestSlots(slotOpts(property.id), 3);
+    state.offered = (state.offered ?? []).filter((o) => DateTime.fromISO(o.start) > now);
+    const avoid = state.offered.filter((o) => o.propertyId !== property.id).map((o) => DateTime.fromISO(o.start, { zone: tz }));
+    const slots = suggestSlots(slotOpts(property.id), 3, avoid);
     if (!slots.length) {
       report.skipped.push(`${property.id}: no free viewing slots in the next ${availability.max_days_ahead ?? 14} days`);
       continue;
@@ -171,6 +174,7 @@ export async function runAgent({ config, state, gmail, brain, calendar = null, r
       body: withSignature(enquiryBody({ property, profile, slots }), profile),
     });
     ps.threadIds.push(sent.threadId);
+    state.offered.push(...slots.map((t) => ({ propertyId: property.id, start: t.toISO() })));
     ps.status = 'active';
     ps.enquirySentAt = now.toISO();
     ps.history.push({ at: now.toISO(), event: 'enquiry_sent' });

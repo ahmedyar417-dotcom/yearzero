@@ -235,3 +235,17 @@ test('free times cover the whole booking window, and duplicate sign-offs are rem
   assert.ok(lines.some((l) => l.startsWith('2026-10-17') && /from 10:00 to 15:30/.test(l)), lines.join('\n'));
   assert.ok(lines.some((l) => l.startsWith('2026-10-20')));
 });
+
+test('several enquiries at once offer different times to each agent', async () => {
+  const config = makeConfig([
+    { id: 'a', address: '1 A Road, London E1 1AA', agent_email: 'a@a-agents.co.uk' },
+    { id: 'b', address: '2 B Road, London E2 2BB', agent_email: 'b@b-agents.co.uk' },
+  ]);
+  const gmail = new FakeGmail();
+  await run({ config, state: emptyState(), gmail, brain: new FakeBrain([]) });
+  const times = (m) => m.body.split('\n').filter((l) => l.startsWith('- '));
+  const [a, b] = gmail.sent.map(times);
+  assert.equal(a.length, 3);
+  assert.equal(b.length, 3);
+  assert.ok(a.every((t) => !b.includes(t)), `${a} vs ${b}`);
+});
