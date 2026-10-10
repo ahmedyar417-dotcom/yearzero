@@ -2,6 +2,7 @@ import { Brain } from './brain.js';
 import { DEFAULT_STATE_PATH, loadConfig, loadState, saveState } from './config.js';
 import { CalendarClient } from './calendar.js';
 import { GmailClient } from './gmail.js';
+import { ListingResolver } from './listing.js';
 import { runAgent } from './agent.js';
 
 const env = process.env;
@@ -41,6 +42,7 @@ async function main() {
       gmail,
       calendar: config.availability.calendar?.enabled ? new CalendarClient(gmail.auth) : null,
       brain,
+      resolver: new ListingResolver({ client: brain.client, model: env.CLAUDE_MODEL }),
     });
   } finally {
     // Save even if the run failed partway, so emails already sent are never sent twice.

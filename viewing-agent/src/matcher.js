@@ -19,15 +19,16 @@ function postcodeOf(address) {
 
 function mentionsProperty(p, text) {
   const t = norm(text);
+  const address = p.address ?? '';
   if (p.listing_url) {
     const id = p.listing_url.match(/(\d{6,})/)?.[1];
     if (id && t.includes(id)) return true;
     if (t.includes(norm(p.listing_url).replace(/^https?:\/\//, ''))) return true;
   }
   // "10 Example Road" — the first address part that has both a number and a word.
-  const street = norm(p.address.split(',').find((part) => /\d/.test(part) && /[a-z]{3,}/i.test(part) && !/^\s*(flat|apartment|apt|unit)\b/i.test(part)) ?? '').trim();
+  const street = norm(address.split(',').find((part) => /\d/.test(part) && /[a-z]{3,}/i.test(part) && !/^\s*(flat|apartment|apt|unit)\b/i.test(part)) ?? '').trim();
   if (street.length > 6 && t.includes(street)) return true;
-  const pc = postcodeOf(p.address);
+  const pc = postcodeOf(address);
   return Boolean(pc && t.replace(/\s+/g, '').includes(pc));
 }
 

@@ -17,6 +17,11 @@ function propertyState(state, id) {
   return state.properties[id];
 }
 
+/** Copy looked-up details onto a property without overriding anything set in properties.yaml. */
+function fillMissing(property, resolved) {
+  for (const [k, v] of Object.entries(resolved)) if (v && !property[k]) property[k] = v;
+}
+
 function bookings(state) {
   return Object.entries(state.properties)
     .filter(([, s]) => s.booking)
@@ -64,13 +69,13 @@ If none of those suit, please let me know some times that work for you.`;
  * One pass of the agent: send enquiries for new properties, then handle new replies.
  * All side effects go through `gmail` and `brain`, so tests can pass fakes.
  */
-export async function runAgent({ config, state, gmail, brain, calendar = null, now = DateTime.now(), dryRun = false, log = console.log, maxAutoReplies = DEFAULT_MAX_AUTO_REPLIES }) {
+export async function runAgent({ config, state, gmail, brain, calendar = null, resolver = null, now = DateTime.now(), dryRun = false, log = console.log, maxAutoReplies = DEFAULT_MAX_AUTO_REPLIES }) {
   const { profile, availability, properties } = config;
   const tz = profile.timezone;
   now = now.setZone(tz);
   const me = await gmail.getMyAddress();
   const notifyTo = config.notifyEmail || me;
-  const report = { enquiries: [], replies: [], bookings: [], escalations: [], skipped: [], errors: [] };
+  const report = { lookups: [], enquiries: [], replies: [], bookings: [], escalations: [], skipped: [], errors: [] };
 
   const send = async (args) => {
     if (dryRun) {
@@ -109,6 +114,40 @@ export async function runAgent({ config, state, gmail, brain, calendar = null, n
   }
   const slotOpts = (excludePropertyId) => ({ now, availability, tz, bookings: bookings(state), busy, excludePropertyId });
 
+  // 0. Properties given only as a link: look up the address, agent and their email.
+  for (const property of properties.filter((p) => p.active)) {
+    const ps = propertyState(state, property.id);
+    if (ps.resolved) fillMissing(property, ps.resolved);
+    const needsLookup = !property.address || (property.send_enquiry && !property.agent_email && ps.status === 'new');
+    if (!needsLookup || !resolver || !property.listing_url) continue;
+    // Retry a failed lookup at most once a day.
+    if (ps.lookupAt && now.diff(DateTime.fromISO(ps.lookupAt), 'hours').hours < 24) continue;
+    ps.lookupAt = now.toISO();
+    let found;
+    try {
+      found = await resolver.resolve(property.listing_url);
+    } catch (err) {
+      log(`${property.id}: listing lookup failed — ${err.message}`);
+      report.errors.push(`${property.id} lookup: ${err.message}`);
+      continue;
+    }
+    log(`${property.id}: looked up — ${JSON.stringify(found)}`);
+    ps.resolved = { address: found.address || undefined, agency: found.agent_name || undefined, agent_email: found.agent_email || undefined, email_source: found.email_source_url || undefined };
+    fillMissing(property, ps.resolved);
+    report.lookups.push(property.id);
+    const where = property.address ?? property.listing_url;
+    if (found.available === false) {
+      ps.status = 'closed';
+      await notify(`No longer available: ${where}`, `This listing looks let or withdrawn, so I haven't contacted anyone.\n\n${property.listing_url}\n${found.notes ?? ''}`);
+    } else if (property.send_enquiry && !property.agent_email) {
+      await notify(
+        `Need the agent's email: ${where}`,
+        `I couldn't find a published email for ${found.agent_name || 'the letting agent'} (${found.email_rejected_reason || found.notes || 'not found'}).\n\n` +
+          `Either send Claude the agent's email, or click "Email agent" on the listing yourself — I'll pick up their reply and handle the rest.\n\n${property.listing_url}`,
+      );
+    }
+  }
+
   // 1. First-contact enquiries.
   for (const property of properties.filter((p) => p.active)) {
     const ps = propertyState(state, property.id);
@@ -117,8 +156,8 @@ export async function runAgent({ config, state, gmail, brain, calendar = null, n
       ps.status = 'active';
       continue;
     }
-    if (!property.agent_email) {
-      report.skipped.push(`${property.id}: no agent_email to send the enquiry to`);
+    if (!property.agent_email || !property.address) {
+      report.skipped.push(`${property.id}: no agent email to send the enquiry to yet`);
       continue;
     }
     const slots = suggestSlots(slotOpts(property.id), 3);

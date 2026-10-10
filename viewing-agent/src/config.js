@@ -26,12 +26,18 @@ export function validateConfig(config) {
 
   const ids = new Set();
   for (const p of properties) {
+    // A bare listing link is enough: the id comes from the link, the rest is looked up.
+    if (!p.id && p.listing_url) {
+      const ref = p.listing_url.match(/(\d{6,})/)?.[1];
+      const site = (p.listing_url.match(/(rightmove|zoopla|onthemarket|openrent)/i)?.[1] ?? 'listing').toLowerCase();
+      p.id = ref ? `${site}-${ref}` : undefined;
+    }
     if (!p.id || !/^[a-z0-9-]+$/i.test(p.id)) {
       throw new Error(`properties.yaml: invalid id "${p.id}" (letters, numbers and dashes only)`);
     }
     if (ids.has(p.id)) throw new Error(`properties.yaml: duplicate id "${p.id}"`);
     ids.add(p.id);
-    if (!p.address) throw new Error(`properties.yaml: "${p.id}" needs an address`);
+    if (!p.address && !p.listing_url) throw new Error(`properties.yaml: "${p.id}" needs an address or a listing_url`);
     p.active = p.active !== false;
     p.send_enquiry = p.send_enquiry !== false;
     if (p.agent_email) p.agent_email = p.agent_email.trim().toLowerCase();

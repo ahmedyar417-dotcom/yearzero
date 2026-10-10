@@ -17,7 +17,7 @@ export function emailAddress(header) {
   return (m ? m[1] : header ?? '').trim().toLowerCase();
 }
 
-function htmlToText(html) {
+export function htmlToText(html) {
   return html
     .replace(/<(style|script)[\s\S]*?<\/\1>/gi, '')
     .replace(/<br\s*\/?>/gi, '\n')
