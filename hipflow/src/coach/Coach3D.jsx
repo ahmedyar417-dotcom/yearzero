@@ -32,6 +32,7 @@ export default function Coach3D({ stretch, pose2d, side = 0, kind = "demo", segK
     // a fresh canvas per mount: a canvas whose WebGL context was released can't be reused
     const canvas = document.createElement("canvas");
     wrapRef.current.prepend(canvas);
+    L.canvas = canvas;
     let stage;
     try {
       stage = createStage(canvas, theme ? { theme } : undefined);
@@ -87,7 +88,11 @@ export default function Coach3D({ stretch, pose2d, side = 0, kind = "demo", segK
     const prep = prepareMove(L.stage, L.model, stretch, side);
     if (!prep) return;
     const other = side === 1 ? prepareMove(L.stage, L.model, stretch, 0) : null;
-    const from = L.cur && L.prep ? L.cur : null;
+    // Only flow on from the current pose within the same stretch (getting in → hold → other side).
+    // Between different stretches, morphing e.g. lying down → kneeling looks unnatural, so cut with a fade.
+    const sameStretch = L.cur && L.prep && L.prep.id === stretch;
+    const from = sameStretch ? L.cur : null;
+    if (!sameStretch && L.canvas) fadeIn(L.canvas);
     L.prep = prep;
     L.kind = kind;
     L.t = 0;
@@ -111,6 +116,15 @@ export default function Coach3D({ stretch, pose2d, side = 0, kind = "demo", segK
   );
 }
 
+function fadeIn(el) {
+  el.style.transition = "none";
+  el.style.opacity = "0";
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    el.style.transition = "opacity 0.45s ease";
+    el.style.opacity = "1";
+  }));
+}
+
 function frame(L, stage) {
   const { prep } = L;
   let pose, extra;
@@ -120,9 +134,11 @@ function frame(L, stage) {
     if (!prep.loop) extra = breathing(pose, L.t);
   } else {
     if (L.kind === "demo" && L.t > L.tl.end + 1) {
-      L.from = L.cur;
-      L.tl = buildTimeline("demo", prep, L.cur, 0);
+      // restart the preview from the starting position
+      L.from = null;
+      L.tl = buildTimeline("demo", prep, null, 0);
       L.t = 0;
+      if (L.canvas) fadeIn(L.canvas);
     }
     pose = sampleTimeline(L.tl, L.t);
     const settled = L.t > L.tl.end;

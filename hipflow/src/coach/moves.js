@@ -155,7 +155,14 @@ const NINETY_R_FOLD = {
   ...NINETY_R, pelvis: torso(-62), chest: torso(-48), head: torso(-40),
   lArm: { ik: [12, -14, 36], pole: BACK, hand: flat() }, rArm: { ik: [-12, -14, 38], pole: BACK, hand: flat() },
 };
-const KNEES_UP = { ...SIT_BENT, lLeg: { ik: [24, -10, 40], pole: UP }, rLeg: { ik: [-24, -10, 40], pole: UP } };
+// 90/90 switches: feet stay planted wide, the knees swing side to side like windshield wipers.
+const WIPER_FEET = { l: [30, -12, 30], r: [-30, -12, 30] };
+const wiper = (k) => ({ // k: 1 = knees down to her left (right leg in front), 0 = knees up, -1 = to her right
+  ...SIT_BENT, pelvis: torso(-98), chest: torso(-94), head: torso(-90),
+  lLeg: { ik: WIPER_FEET.l, pole: [k * 0.95, 1 - Math.abs(k) * 1.3, 0.15], foot: hz(60 * Math.max(0, k) + 10, -0.2) },
+  rLeg: { ik: WIPER_FEET.r, pole: [k * 0.95, 1 - Math.abs(k) * 1.3, 0.15], foot: hz(-60 * Math.max(0, -k) - 10, -0.2) },
+});
+const KNEES_UP = wiper(0);
 
 const TWIST = {
   ...SUPINE_BENT,
@@ -169,7 +176,8 @@ const T_ARMS = { ...SUPINE_BENT, lArm: TWIST.lArm, rArm: TWIST.rArm };
 const HAPPY_BABY = {
   pelvis: supine,
   lLeg: { thigh: [0.5, 0.42, -0.75], shin: [0.06, 1, 0.08], foot: [0, 0.15, -1] }, rLeg: { thigh: [-0.5, 0.42, -0.75], shin: [-0.06, 1, 0.08], foot: [0, 0.15, -1] },
-  lArm: { ik: [22, 30, -12], pole: [0.4, -0.9, 0] }, rArm: { ik: [-22, 30, -12], pole: [-0.4, -0.9, 0] },
+  // hands hold the outsides of the shins
+  lArm: { ik: [30, 36, -19], pole: [0.5, -0.8, 0.2] }, rArm: { ik: [-30, 36, -19], pole: [-0.5, -0.8, 0.2] },
 };
 
 const BUTTERFLY = {
@@ -253,6 +261,13 @@ const FLOW_SQUAT = {
   lLeg: { ik: [17, -93, 4], pole: hz(28, 0.2), foot: hz(18) }, rLeg: { ik: [-17, -93, 4], pole: hz(-28, 0.2), foot: hz(-18) },
   lArm: { ik: [12, -92, 30], pole: BACK, hand: flat() }, rArm: { ik: [-12, -92, 30], pole: BACK, hand: flat() },
 };
+// halfway: hips lift a little and the right foot travels back above the floor
+const FLOW_STEP = {
+  o: [0, -54, -10], pelvis: torso(-55), chest: torso(-52), head: torso(-55),
+  lLeg: { ik: [17, -93, 4], pole: hz(20, 0.3), foot: hz(14) },
+  rLeg: { ik: [-14, -84, -40], pole: [0, -0.6, -1], foot: sag(160) },
+  lArm: { ik: [22, -92, 30], pole: BACK, hand: flat() }, rArm: { ik: [-12, -92, 30], pole: BACK, hand: flat() },
+};
 const FLOW_LUNGE = {
   o: [0, -52, -8], pelvis: torso(-60), chest: torso(-50), head: torso(-45),
   lLeg: { ik: [17, -93, 4], pole: sag(-40, 0.2), foot: hz(10) },
@@ -292,7 +307,7 @@ export const MOVES = {
   figure4: { cam: { az: -70, el: 16 }, entry: [SUPINE_BENT, FIG4_CROSS, FIG4_PULL] },
   pigeon: { cam: { az: -55, el: 12 }, entry: [TABLE, PIGEON_STEP, PIGEON_UP] },
   ninety_ninety: { cam: { az: -20, el: 18 }, entry: [SIT_BENT, NINETY_R, NINETY_R_FOLD] },
-  ninety_switch: { cam: { az: -10, el: 20 }, entry: [SIT_BENT, NINETY_R], loop: [NINETY_R, KNEES_UP, mirror(NINETY_R), KNEES_UP], beat: 1.8 },
+  ninety_switch: { cam: { az: -10, el: 20 }, entry: [SIT_BENT, KNEES_UP, wiper(1)], loop: [wiper(1), wiper(0.5), wiper(0), wiper(-0.5), wiper(-1), wiper(-0.5), wiper(0), wiper(0.5)], beat: 0.9 },
   supine_twist: { cam: { az: -30, el: 35 }, entry: [SUPINE_BENT, T_ARMS, TWIST] },
   happy_baby: { cam: { az: -75, el: 14 }, entry: [SUPINE_BENT, KNEE_HUG(0), HAPPY_BABY] },
   butterfly: { cam: { az: -15, el: 15 }, entry: [SIT_LONG, BUTTERFLY_START, BUTTERFLY] },
@@ -303,7 +318,7 @@ export const MOVES = {
   deep_squat: { cam: { az: -70, el: 8 }, entry: [SQUAT_STAND, DEEP_SQUAT], pole: true },
   supine_hamstring: { cam: { az: -80, el: 10 }, entry: [SUPINE_BENT, HAM_TUCK, HAM_UP], strap: true },
   half_split: { cam: { az: -80, el: 8 }, entry: [KNEEL, HALF_KNEEL_FWD_R, HALF_SPLIT_UP, HALF_SPLIT_FOLD], blocks: true },
-  squat_lunge_flow: { cam: { az: -75, el: 10 }, entry: [SQUAT_STAND, FLOW_SQUAT], loop: [FLOW_SQUAT, FLOW_LUNGE], beat: 2.8 },
+  squat_lunge_flow: { cam: { az: -75, el: 10 }, entry: [SQUAT_STAND, FLOW_SQUAT], loop: [FLOW_SQUAT, FLOW_STEP, FLOW_LUNGE, FLOW_STEP], beat: 1.6 },
   child_pose: { cam: { az: -75, el: 14 }, entry: [KNEEL, CHILD_SIT, CHILD_POSE] },
   belly_breath: { cam: { az: -75, el: 14 }, entry: [SUPINE_BENT, BELLY] },
 };
