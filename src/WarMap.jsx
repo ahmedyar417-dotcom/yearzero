@@ -34,10 +34,10 @@ const NAG_ROLLS      = 3;  // pushed this many times → flagged
 
 // Mirrors App.jsx DEFAULT_SECTIONS so tags match the Goals tab when yz-sections is unset
 const DEFAULT_AREAS = {
-  business: { label: "Business", color: "#00FF88" },
-  fatLoss:  { label: "Fat Loss", color: "#FF6B35" },
-  savings:  { label: "Savings",  color: "#FFD700" },
-  social:   { label: "Grow @X",  color: "#A78BFA" },
+  business: { label: "Business", color: "#00FF88", goal: "Leave Corporate · £15k/month" },
+  fatLoss:  { label: "Fat Loss", color: "#FF6B35", goal: "102 kg → 85 kg" },
+  savings:  { label: "Savings",  color: "#FFD700", goal: "£15k → £100k" },
+  social:   { label: "Grow @X",  color: "#A78BFA", goal: "0 → 5,000 Followers" },
 };
 const LIFE_AREA = { id: "life", label: "Life", color: "#8a8a8a" };
 
@@ -197,27 +197,28 @@ function Card({ t, title, right, children, style }) {
   );
 }
 
-function Check({ on, color = "#22c55e", onClick, t, label }) {
+function Check({ on, color = "#22c55e", onClick, t, label, size = 20 }) {
   return (
     <button
       onClick={onClick}
       aria-pressed={on}
       aria-label={label}
       style={{
-        width: 20, height: 20, borderRadius: 6, flexShrink: 0, padding: 0, cursor: "pointer",
+        width: size, height: size, borderRadius: Math.round(size * 0.3), flexShrink: 0, padding: 0, cursor: "pointer",
         border: `1.5px solid ${on ? color : t.checkBorder}`, background: on ? color : "transparent",
-        color: "#0a0a0a", fontSize: 12, fontWeight: 800, lineHeight: 1,
+        color: "#0a0a0a", fontSize: Math.round(size * 0.6), fontWeight: 800, lineHeight: 1,
         display: "flex", alignItems: "center", justifyContent: "center",
       }}
     >{on ? "✓" : ""}</button>
   );
 }
 
+// Spans so it can sit inside buttons (goal lines) as well as blocks
 function Bar({ pct, color, t, h = 4 }) {
   return (
-    <div style={{ height: h, background: t.track, borderRadius: h, overflow: "hidden" }}>
-      <div style={{ width: `${clamp01(pct || 0) * 100}%`, height: "100%", background: color, borderRadius: h, transition: "width 0.3s" }} />
-    </div>
+    <span style={{ display: "block", height: h, background: t.track, borderRadius: h, overflow: "hidden" }}>
+      <span style={{ display: "block", width: `${clamp01(pct || 0) * 100}%`, height: "100%", background: color, borderRadius: h, transition: "width 0.3s" }} />
+    </span>
   );
 }
 
@@ -291,14 +292,14 @@ function NumberField({ value, onSave, t, placeholder = "—", width = 80 }) {
   );
 }
 
-function NoteArea({ value, onChange, t, placeholder, rows = 3 }) {
+function NoteArea({ value, onChange, t, placeholder, rows = 3, style }) {
   return (
     <textarea
       value={value || ""}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
       rows={rows}
-      style={inputStyle(t, { width: "100%", resize: "vertical", lineHeight: 1.5, display: "block" })}
+      style={inputStyle(t, { width: "100%", resize: "vertical", lineHeight: 1.5, display: "block", ...style })}
     />
   );
 }
@@ -376,7 +377,7 @@ function NavRow({ t, label, sub, onPrev, onNext, right }) {
 
 // ─── Day view ─────────────────────────────────────────────────────────────────
 function DayView({ wm, date, setDate }) {
-  const { t, areas, config, ratings } = wm;
+  const { t, areas, config } = wm;
   const day     = wm.getDay(date);
   const routine = wm.routineFor(date);
   const stats   = dayStats(day, routine);
@@ -427,27 +428,7 @@ function DayView({ wm, date, setDate }) {
             <div style={{ fontSize: 10, color: t.sub, letterSpacing: 2, fontWeight: 700, marginBottom: 8 }}>
               RATE THE DAY{suggested && <span style={{ fontWeight: 500, letterSpacing: 0.5 }}> · completion says “{wm.ratingLabel(suggested)}”</span>}
             </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {ratings.map(r => {
-                const on = day.rating === r.id;
-                return (
-                  <button
-                    key={r.id}
-                    onClick={() => update(d => ({ ...d, rating: on ? null : r.id }))}
-                    aria-pressed={on}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 20, cursor: "pointer",
-                      fontSize: 12, fontWeight: on ? 700 : 500, fontFamily: "inherit",
-                      background: on ? r.color + "26" : "transparent", color: on ? t.text : t.sub,
-                      border: `1px solid ${on ? r.color : suggested === r.id ? r.color + "88" : t.inputBorder}`,
-                    }}
-                  >
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: r.color }} />
-                    {r.label}
-                  </button>
-                );
-              })}
-            </div>
+            <RatingChips wm={wm} s={date} suggested={suggested} />
           </div>
         </div>
       </Card>
@@ -792,7 +773,222 @@ function WeekView({ wm, date, setDate, openDay }) {
   );
 }
 
+// ─── Shared day/week pieces (Month view cells, phone panel) ──────────────────
+function RatingChips({ wm, s, suggested, small }) {
+  const { t } = wm;
+  const day = wm.getDay(s);
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {wm.ratings.map(r => {
+        const on = day.rating === r.id;
+        return (
+          <button
+            key={r.id}
+            onClick={() => wm.updateDay(s, d => ({ ...d, rating: on ? null : r.id }))}
+            aria-pressed={on}
+            style={{
+              display: "flex", alignItems: "center", gap: 6, padding: small ? "5px 9px" : "6px 10px", borderRadius: 20, cursor: "pointer",
+              fontSize: small ? 11.5 : 12, fontWeight: on ? 700 : 500, fontFamily: "inherit",
+              background: on ? r.color + "26" : "transparent", color: on ? t.text : t.sub,
+              border: `1px solid ${on ? r.color : suggested === r.id ? r.color + "88" : t.inputBorder}`,
+            }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: r.color }} />
+            {r.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// The coloured dot in a month cell; opens a small menu of ratings
+function RatingDot({ wm, s }) {
+  const { t } = wm;
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const esc   = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const r = wm.ratingById(wm.getDay(s).rating);
+  const pick = (id) => { wm.updateDay(s, d => ({ ...d, rating: id })); setOpen(false); };
+  const item = { display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, border: "none", color: t.text, fontSize: 12, cursor: "pointer", fontFamily: "inherit", textAlign: "left" };
+
+  return (
+    <span ref={ref} className="wm-cell-dot" style={{ position: "relative", display: "inline-flex" }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        aria-label={`Rate ${fmtDay(s)}${r ? `, now ${r.label}` : ""}`}
+        aria-expanded={open}
+        title={r ? r.label : "Rate the day"}
+        style={{ width: 13, height: 13, borderRadius: "50%", padding: 0, cursor: "pointer", background: r ? r.color : "transparent", border: `1.5px solid ${r ? r.color : t.checkBorder}` }}
+      />
+      {open && (
+        <div role="menu" style={{ position: "absolute", top: 19, left: -6, zIndex: 30, minWidth: 180, background: t.card, border: `1px solid ${t.border}`, borderRadius: 10, padding: 5, boxShadow: "0 10px 30px rgba(0,0,0,0.28)", display: "flex", flexDirection: "column" }}>
+          {wm.ratings.map(x => (
+            <button key={x.id} role="menuitem" onClick={() => pick(x.id)} style={{ ...item, background: r?.id === x.id ? t.surface : "transparent" }}>
+              <span style={{ width: 9, height: 9, borderRadius: "50%", background: x.color, flexShrink: 0 }} />{x.label}
+            </button>
+          ))}
+          {r && <button role="menuitem" onClick={() => pick(null)} style={{ ...item, background: "transparent", color: t.sub }}>Clear rating</button>}
+        </div>
+      )}
+    </span>
+  );
+}
+
+// "+ Add" that turns into an input; Enter adds and stays open for the next line
+function InlineAdd({ t, onAdd, label, areas, panel }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [area, setArea] = useState(areas?.[0]?.id);
+  const cancelled = useRef(false);
+  const fs = panel ? 13 : 11.5;
+  const commit = () => { const v = text.trim(); if (v) onAdd(v, area); setText(""); };
+
+  if (!open) {
+    return (
+      <button
+        className="wm-add"
+        onClick={() => setOpen(true)}
+        aria-label={label}
+        style={{ alignSelf: "flex-start", background: "none", border: "none", color: t.sub, fontSize: fs, cursor: "pointer", padding: panel ? "8px 0 0" : "3px 0 0", fontFamily: "inherit" }}
+      >+ Add</button>
+    );
+  }
+  return (
+    <div
+      style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 3 }}
+      onBlur={e => {
+        if (e.currentTarget.contains(e.relatedTarget)) return;
+        if (!cancelled.current) commit();
+        cancelled.current = false;
+        setOpen(false);
+      }}
+    >
+      {areas && <AreaPicker value={area} areas={areas} onChange={setArea} />}
+      <input
+        autoFocus
+        value={text}
+        onChange={e => setText(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") { cancelled.current = true; e.currentTarget.blur(); }
+        }}
+        placeholder="Type, then Enter"
+        aria-label={label}
+        style={inputStyle(t, { flex: 1, width: "100%", fontSize: fs, padding: panel ? "7px 9px" : "3px 6px" })}
+      />
+    </div>
+  );
+}
+
+// A day's tasks + routine, editable in place — a month cell, or the phone panel
+function DayList({ wm, s, panel = false, showRoutine = true }) {
+  const { t, areas } = wm;
+  const day     = wm.getDay(s);
+  const routine = showRoutine ? wm.routineFor(s) : [];
+  const fs  = panel ? 13 : 11.5;
+  const box = panel ? 18 : 13;
+  const gap = panel ? 9 : 5;
+  const pad = panel ? "6px 0" : "2px 0";
+  const patch = (id, p) => wm.updateDay(s, d => ({ ...d, tasks: d.tasks.map(x => (x.id === id ? { ...x, ...p } : x)) }));
+
+  return (
+    <div className={panel ? "wm-daylist wm-daylist-panel" : "wm-daylist"} style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+      {day.tasks.map(task => (isLiveTask(task) ? (
+        <div key={task.id} className="wm-task" style={{ display: "flex", alignItems: "flex-start", gap, padding: pad }}>
+          <Check t={t} size={box} on={task.done} color={wm.areaOf(task.area).color} onClick={() => patch(task.id, { done: !task.done })} label={`Mark ${task.text} done`} />
+          <InlineText
+            t={t}
+            value={task.text}
+            onSave={v => patch(task.id, { text: v })}
+            style={{ flex: 1, fontSize: fs, lineHeight: 1.35, color: task.done ? t.sub : t.text, textDecoration: task.done ? "line-through" : "none" }}
+          />
+          {task.rolled > 0 && (panel
+            ? <RolledBadge rolled={task.rolled} t={t} />
+            : <span title={`Pushed ${task.rolled}×`} style={{ fontSize: 9.5, fontWeight: 700, color: task.rolled >= NAG_ROLLS ? "#ef4444" : t.sub, flexShrink: 0 }}>↻{task.rolled}</span>)}
+          <span className="wm-task-actions" style={{ display: "flex", flexShrink: 0 }}>
+            {!task.done && <button aria-label="Push to next day" title="Push to next day" onClick={() => wm.moveTask(task, s, addDays(s, 1))} style={iconBtn(t, { fontSize: panel ? 13 : 11, padding: "0 2px" })}>→</button>}
+            <button aria-label="Delete task" title="Delete" onClick={() => wm.updateDay(s, d => ({ ...d, tasks: d.tasks.filter(x => x.id !== task.id) }))} style={iconBtn(t, { fontSize: panel ? 15 : 12, padding: "0 2px" })}>×</button>
+          </span>
+        </div>
+      ) : (
+        <div key={task.id} title={task.movedTo ? `Moved to ${fmtDay(task.movedTo)}` : "Dropped"} style={{ fontSize: fs - 1, lineHeight: 1.35, color: t.dim, textDecoration: "line-through", padding: pad, paddingLeft: box + gap, overflowWrap: "anywhere" }}>
+          {task.text}{task.movedTo ? " →" : ""}
+        </div>
+      )))}
+      {routine.length > 0 && (
+        <div style={day.tasks.length ? { borderTop: `1px dashed ${t.border}`, marginTop: 3, paddingTop: 3 } : undefined}>
+          {routine.map(r => {
+            const on = !!day.routine?.[r.id];
+            return (
+              <div key={r.id} style={{ display: "flex", alignItems: "flex-start", gap, padding: pad }}>
+                <Check t={t} size={box} on={on} color={wm.areaOf(r.area).color} onClick={() => wm.updateDay(s, d => ({ ...d, routine: { ...d.routine, [r.id]: !on } }))} label={`Mark ${r.label} done`} />
+                <span style={{ fontSize: fs, lineHeight: 1.35, color: on ? t.dim : t.sub, textDecoration: on ? "line-through" : "none", minWidth: 0, overflowWrap: "anywhere" }}>{r.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <InlineAdd
+        t={t}
+        panel={panel}
+        areas={areas}
+        label={`Add a task on ${fmtDay(s)}`}
+        onAdd={(text, area) => wm.updateDay(s, d => ({ ...d, tasks: [...d.tasks, { id: uid(), text, area, done: false }] }))}
+      />
+    </div>
+  );
+}
+
+// The week's targets, editable in place — the month's right-hand column
+function WeekGoals({ wm, monday, panel = false }) {
+  const { t } = wm;
+  const week = { ...EMPTY_WEEK, ...(wm.weeks[monday] || {}) };
+  const fs  = panel ? 13 : 11.5;
+  const box = panel ? 18 : 13;
+  const score = week.review?.score;
+  const patch = (id, p) => wm.setWeek(monday, w => ({ ...w, targets: w.targets.map(x => (x.id === id ? { ...x, ...p } : x)) }));
+
+  return (
+    <div className={panel ? "wm-daylist-panel" : undefined} style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+      {week.targets.map(x => (
+        <div key={x.id} className="wm-task" style={{ display: "flex", gap: panel ? 9 : 5, alignItems: "flex-start", padding: panel ? "6px 0" : "2px 0" }}>
+          <Check t={t} size={box} on={!!x.done} onClick={() => patch(x.id, { done: !x.done })} label={`Mark ${x.text} done`} />
+          <InlineText
+            t={t}
+            value={x.text}
+            onSave={v => patch(x.id, { text: v })}
+            style={{ flex: 1, fontSize: fs, lineHeight: 1.35, color: x.done ? t.sub : x.carried ? t.dim : t.text, textDecoration: x.done || x.carried ? "line-through" : "none" }}
+          />
+          <span className="wm-task-actions" style={{ display: "flex", flexShrink: 0 }}>
+            <button aria-label="Delete target" title="Delete" onClick={() => wm.setWeek(monday, w => ({ ...w, targets: w.targets.filter(y => y.id !== x.id) }))} style={iconBtn(t, { fontSize: panel ? 15 : 12, padding: "0 2px" })}>×</button>
+          </span>
+        </div>
+      ))}
+      <InlineAdd t={t} panel={panel} label={`Add a goal for week ${isoWeek(monday)}`} onAdd={text => wm.setWeek(monday, w => ({ ...w, targets: [...w.targets, { id: uid(), text, done: false }] }))} />
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: panel ? 10 : 6, flexWrap: "wrap" }}>
+        {score && <span style={{ fontSize: 11, fontWeight: 800, color: score >= 8 ? "#22c55e" : score >= 5 ? "#f59e0b" : "#ef4444" }}>{score}/10</span>}
+        <button onClick={() => wm.openWeek(monday)} style={{ background: "none", border: "none", color: t.sub, fontSize: 11, cursor: "pointer", padding: 0, fontFamily: "inherit", textDecoration: "underline", textUnderlineOffset: 2 }}>
+          {score ? "Review" : "Review week"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Month view ───────────────────────────────────────────────────────────────
+// The spreadsheet's month page: every day's list visible and editable in the
+// grid, the week's goals beside each row, objectives and notes underneath.
+// On a phone the grid shrinks to colours and the tapped day opens below it.
+const ROUTINE_KEY = "wm-month-routine"; // UI-only
+
 function MonthView({ wm, date, setDate, openDay }) {
   const { t } = wm;
   const y  = Number(date.slice(0, 4));
@@ -805,6 +1001,15 @@ function MonthView({ wm, date, setDate, openDay }) {
   const rows  = Array.from({ length: cells.length / 7 }, (_, i) => cells.slice(i * 7, i * 7 + 7));
   const month = { ...EMPTY_MONTH, ...(wm.months[mk] || {}) };
   const setMonth = (fn) => wm.setMonth(mk, fn);
+
+  const [picked, setPicked] = useState(null);
+  const sel = picked && monthOf(picked) === mk ? picked : monthOf(wm.today) === mk ? wm.today : first;
+  const [showRoutine, setShowRoutine] = useState(() => { try { return localStorage.getItem(ROUTINE_KEY) !== "0"; } catch { return true; } });
+  const toggleRoutine = () => {
+    const next = !showRoutine;
+    setShowRoutine(next);
+    try { localStorage.setItem(ROUTINE_KEY, next ? "1" : "0"); } catch {}
+  };
 
   const counts = Object.fromEntries(wm.ratings.map(r => [r.id, 0]));
   let taskDone = 0, taskTotal = 0;
@@ -820,84 +1025,94 @@ function MonthView({ wm, date, setDate, openDay }) {
       <NavRow
         t={t}
         label={`${MONTH_NAMES[m0]} ${y}`}
-        sub={`${taskDone}/${taskTotal} tasks done · ${wm.ratings.filter(r => counts[r.id]).map(r => `${counts[r.id]} ${r.id}`).join(" · ") || "no days rated"}`}
+        sub={`${taskDone}/${taskTotal} tasks done · ${wm.ratings.filter(r => counts[r.id]).map(r => `${counts[r.id]} ${r.id}`).join(" · ") || "no days rated yet"}`}
         onPrev={() => setDate(toKey(new Date(y, m0 - 1, 1)))}
         onNext={() => setDate(toKey(new Date(y, m0 + 1, 1)))}
-        right={monthOf(wm.today) !== mk && <button onClick={() => setDate(wm.today)} style={btnStyle(t)}>This month</button>}
+        right={
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={toggleRoutine} aria-pressed={showRoutine} style={btnStyle(t)}>{showRoutine ? "Hide routine" : "Show routine"}</button>
+            {monthOf(wm.today) !== mk && <button onClick={() => setDate(wm.today)} style={btnStyle(t)}>This month</button>}
+          </div>
+        }
       />
 
       <div className="wm-month" style={{ marginBottom: 16 }}>
-        {[...WEEKDAYS, "WEEK"].map((d, i) => (
+        {[...WEEKDAYS, "Weekly goals"].map((d, i) => (
           <div key={d} className={i === 7 ? "wm-weekcol" : undefined} style={{ fontSize: 10, color: t.sub, letterSpacing: 1.5, fontWeight: 700, padding: "0 4px 4px" }}>{d.toUpperCase()}</div>
         ))}
         {rows.map((row, ri) => {
           const monday = mondayOf(row.find(Boolean));
-          const wk = wm.weeks[monday];
           return [
             ...row.map((s, ci) => {
-              if (!s) return <div key={`e${ri}-${ci}`} style={{ background: t.empty, borderRadius: 10, opacity: 0.5 }} />;
-              const d  = wm.getDay(s);
-              const st = dayStats(d, wm.routineFor(s));
-              const r  = wm.ratingById(d.rating);
-              const live = d.tasks.filter(isLiveTask);
-              const pct  = s <= wm.today || st.done > 0 ? st.pct : null;
+              if (!s) return <div key={`e${ri}-${ci}`} style={{ background: t.empty, borderRadius: 10, opacity: 0.45 }} />;
+              const d   = wm.getDay(s);
+              const st  = dayStats(d, wm.routineFor(s));
+              const r   = wm.ratingById(d.rating);
+              const pct = s <= wm.today || st.done > 0 ? st.pct : null;
               return (
-                <button
+                <div
                   key={s}
-                  onClick={() => openDay(s)}
-                  className="wm-cell"
+                  onClick={() => setPicked(s)}
+                  className={`wm-daycell${s === sel ? " is-sel" : ""}`}
                   style={{
-                    background: r ? r.color + (t.dark ? "24" : "30") : t.card,
-                    border: `1px solid ${s === wm.today ? t.text : r ? r.color + "55" : t.border}`,
-                    borderRadius: 10, padding: "7px 8px", textAlign: "left", cursor: "pointer", fontFamily: "inherit",
-                    display: "flex", flexDirection: "column", gap: 3, minWidth: 0, overflow: "hidden",
+                    background: r ? r.color + (t.dark ? "26" : "3a") : t.card,
+                    border: `1px solid ${s === wm.today ? t.text : r ? r.color + "66" : t.border}`,
+                    borderRadius: 10, padding: "7px 8px 8px", minWidth: 0, display: "flex", flexDirection: "column", gap: 4,
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: t.text }}>{fromKey(s).getDate()}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <button
+                      className="wm-daynum"
+                      onClick={() => openDay(s)}
+                      aria-label={`Open ${fmtDay(s)}`}
+                      title="Open this day"
+                      style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 14, fontWeight: 800, color: t.text, fontFamily: "inherit", fontVariantNumeric: "tabular-nums" }}
+                    >{fromKey(s).getDate()}</button>
+                    <RatingDot wm={wm} s={s} />
+                    <span style={{ flex: 1 }} />
                     {pct != null && <span className="wm-cell-pct" style={{ fontSize: 10, color: t.sub, fontVariantNumeric: "tabular-nums" }}>{Math.round(pct * 100)}%</span>}
                   </div>
-                  <div className="wm-cell-tasks" style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                    {live.slice(0, 3).map(x => (
-                      <span key={x.id} style={{ fontSize: 11, color: x.done ? t.sub : t.text, textDecoration: x.done ? "line-through" : "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 4 }}>
-                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: wm.areaOf(x.area).color, flexShrink: 0 }} />
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{x.text}</span>
-                      </span>
-                    ))}
-                    {live.length > 3 && <span style={{ fontSize: 10, color: t.sub }}>+{live.length - 3} more</span>}
-                  </div>
-                  <div style={{ flex: 1 }} />
-                  {pct != null && <Bar t={t} pct={pct} color={r?.color || t.sub} h={3} />}
-                </button>
+                  <div className="wm-cell-body"><DayList wm={wm} s={s} showRoutine={showRoutine} /></div>
+                </div>
               );
             }),
-            <button
-              key={`w${ri}`}
-              className="wm-weekcol"
-              onClick={() => { setDate(monday); wm.setView("week"); }}
-              style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: "7px 8px", textAlign: "left", cursor: "pointer", fontFamily: "inherit", minWidth: 0 }}
-            >
-              <div style={{ fontSize: 10, color: t.sub, fontWeight: 700, letterSpacing: 1 }}>WK {isoWeek(monday)}</div>
-              {wk?.targets?.length > 0 && <div style={{ fontSize: 12, color: t.text, marginTop: 4 }}>{wk.targets.filter(x => x.done).length}/{wk.targets.length} targets</div>}
-              {wk?.review?.score && <div style={{ fontSize: 12, color: t.text, marginTop: 2 }}>Score {wk.review.score}/10</div>}
-            </button>,
+            <div key={`w${ri}`} className="wm-weekcol wm-weekgoals" style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 10, padding: "8px 9px", minWidth: 0 }}>
+              <div style={{ fontSize: 10, color: t.sub, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>WEEK {isoWeek(monday)}</div>
+              <WeekGoals wm={wm} monday={monday} />
+            </div>,
           ];
         })}
       </div>
 
-      <div className="wm-grid2">
+      {/* Phone: the tapped day and its week, full size */}
+      <div className="wm-month-panel">
+        <Card
+          t={t}
+          title={fmtDay(sel, { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}
+          right={<button onClick={() => openDay(sel)} style={btnStyle(t, "ghost", { padding: "4px 9px", fontSize: 11 })}>Open day</button>}
+        >
+          <RatingChips wm={wm} s={sel} small />
+          <div style={{ height: 8 }} />
+          <DayList key={sel} wm={wm} s={sel} panel showRoutine={showRoutine} />
+        </Card>
+        <Card t={t} title={`WEEK ${isoWeek(sel)} GOALS`}>
+          <WeekGoals key={mondayOf(sel)} wm={wm} monday={mondayOf(sel)} panel />
+        </Card>
+      </div>
+
+      <div className="wm-grid2" style={{ marginTop: 16 }}>
         <Card t={t} title="MAIN OBJECTIVES" right={<span style={{ fontSize: 11, color: t.sub }}>{month.objectives.filter(x => x.done).length}/{month.objectives.length}</span>}>
           {month.objectives.length === 0 && <div style={{ fontSize: 13, color: t.dim }}>What must be true by the end of {MONTH_NAMES[m0]}?</div>}
           {month.objectives.map(x => (
             <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", borderBottom: `1px solid ${t.rowSep}` }}>
-              <Check t={t} on={!!x.done} onClick={() => setMonth(mo => ({ ...mo, objectives: mo.objectives.map(y => (y.id === x.id ? { ...y, done: !y.done } : y)) }))} label={`Mark ${x.text} done`} />
+              <Check t={t} on={!!x.done} onClick={() => setMonth(mo => ({ ...mo, objectives: mo.objectives.map(o => (o.id === x.id ? { ...o, done: !o.done } : o)) }))} label={`Mark ${x.text} done`} />
               <InlineText
                 t={t}
                 value={x.text}
-                onSave={v => setMonth(mo => ({ ...mo, objectives: mo.objectives.map(y => (y.id === x.id ? { ...y, text: v } : y)) }))}
+                onSave={v => setMonth(mo => ({ ...mo, objectives: mo.objectives.map(o => (o.id === x.id ? { ...o, text: v } : o)) }))}
                 style={{ flex: 1, fontSize: 13, color: x.done ? t.sub : t.text, textDecoration: x.done ? "line-through" : "none" }}
               />
-              <button aria-label="Delete objective" onClick={() => setMonth(mo => ({ ...mo, objectives: mo.objectives.filter(y => y.id !== x.id) }))} style={iconBtn(t)}>×</button>
+              <button aria-label="Delete objective" onClick={() => setMonth(mo => ({ ...mo, objectives: mo.objectives.filter(o => o.id !== x.id) }))} style={iconBtn(t)}>×</button>
             </div>
           ))}
           <AddRow t={t} placeholder="Add an objective…" onAdd={text => setMonth(mo => ({ ...mo, objectives: [...mo.objectives, { id: uid(), text, done: false }] }))} />
@@ -911,61 +1126,87 @@ function MonthView({ wm, date, setDate, openDay }) {
 }
 
 // ─── Year view ────────────────────────────────────────────────────────────────
-function GoalRow({ wm, goal }) {
+// The dashboard page: each quarter's goals beside its three months of days,
+// with the mission, key, day tally and rules alongside.
+function GoalEditor({ wm, goal }) {
   const { t, areas, config } = wm;
-  const prog   = wm.goalProgress(goal);
   const linked = config.metrics.find(m => m.id === goal.metricId);
-  const statusColor = { open: t.sub, hit: "#22c55e", missed: "#ef4444", moved: "#f59e0b" }[goal.status] || t.sub;
-  const closed = goal.status !== "open";
-
+  const small  = { padding: "4px 9px", fontSize: 11 };
   return (
-    <div style={{ padding: "9px 0", borderBottom: `1px solid ${t.rowSep}` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <AreaPicker value={goal.area} areas={areas} onChange={a => wm.patchGoal(goal.id, { area: a })} />
-        <InlineText
-          t={t}
-          value={goal.title}
-          onSave={v => wm.patchGoal(goal.id, { title: v })}
-          style={{ flex: 1, fontSize: 13, fontWeight: 600, color: closed ? t.sub : t.text, textDecoration: goal.status === "hit" || goal.status === "moved" ? "line-through" : "none" }}
-        />
-        {goal.slips > 0 && (
-          <span title="Moved from an earlier quarter" style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", border: "1px solid #f59e0b55", borderRadius: 10, padding: "1px 6px", flexShrink: 0 }}>
-            slipped ×{goal.slips}
-          </span>
-        )}
-        <select
-          value={goal.status}
-          onChange={e => (e.target.value === "next" ? wm.moveGoalToNextQuarter(goal) : wm.patchGoal(goal.id, { status: e.target.value }))}
-          aria-label="Goal status"
-          style={inputStyle(t, { padding: "3px 6px", fontSize: 11, color: statusColor, fontWeight: 700, width: "auto" })}
-        >
-          <option value="open">Open</option>
-          <option value="hit">Hit</option>
-          <option value="missed">Missed</option>
-          {goal.status === "moved" ? <option value="moved">Moved on</option> : <option value="next">Move to next Q</option>}
-        </select>
-        <button aria-label="Delete goal" onClick={() => wm.deleteGoal(goal.id)} style={iconBtn(t)}>×</button>
+    <div style={{ padding: "2px 0 12px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+        {[["open", "Open"], ["hit", "Hit"], ["missed", "Missed"]].map(([id, label]) => (
+          <button key={id} onClick={() => wm.patchGoal(goal.id, { status: id })} aria-pressed={goal.status === id} style={btnStyle(t, goal.status === id ? "solid" : "ghost", small)}>{label}</button>
+        ))}
+        {goal.status !== "moved" && (() => {
+          const n = wm.nextQuarterFor(goal);
+          return <button onClick={() => wm.moveGoalToNextQuarter(goal)} style={btnStyle(t, "ghost", small)}>Move to Q{n.q}{n.year !== goal.year ? ` ${n.year}` : ""}</button>;
+        })()}
+        <span style={{ flex: 1 }} />
+        <button onClick={() => wm.deleteGoal(goal.id)} style={btnStyle(t, "ghost", { ...small, color: "#ef4444" })}>Delete</button>
       </div>
-      {goal.target != null && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, paddingLeft: 24 }}>
-          <div style={{ flex: 1 }}><Bar t={t} pct={prog.pct} color={wm.areaOf(goal.area).color} /></div>
-          {linked ? (
-            <span style={{ fontSize: 11, color: t.sub, fontVariantNumeric: "tabular-nums" }}>{prog.text} · from {linked.label}</span>
-          ) : (
-            <>
-              <NumberField t={t} width={64} value={goal.current} placeholder="now" onSave={v => wm.patchGoal(goal.id, { current: v })} />
-              <span style={{ fontSize: 11, color: t.sub, whiteSpace: "nowrap" }}>→ {goal.target}{goal.unit ? ` ${goal.unit}` : ""}</span>
-            </>
-          )}
-        </div>
-      )}
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <AreaPicker value={goal.area} areas={areas} onChange={a => wm.patchGoal(goal.id, { area: a })} />
+        <input value={goal.title} onChange={e => wm.patchGoal(goal.id, { title: e.target.value })} aria-label="Goal" style={inputStyle(t, { flex: 1, padding: "5px 8px", fontSize: 12 })} />
+      </div>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", fontSize: 11, color: t.sub }}>
+        <span>From</span>
+        <NumberField t={t} width={64} value={goal.start} placeholder="0" onSave={v => wm.patchGoal(goal.id, { start: v })} />
+        <span>to</span>
+        <NumberField t={t} width={64} value={goal.target} placeholder="target" onSave={v => wm.patchGoal(goal.id, { target: v })} />
+        <input value={goal.unit || ""} onChange={e => wm.patchGoal(goal.id, { unit: e.target.value })} placeholder="unit" aria-label="Unit" style={inputStyle(t, { width: 60, padding: "6px 8px", fontSize: 12 })} />
+        {goal.target != null && !linked && (
+          <>
+            <span>now</span>
+            <NumberField t={t} width={64} value={goal.current} onSave={v => wm.patchGoal(goal.id, { current: v })} />
+          </>
+        )}
+        <select value={goal.metricId || ""} onChange={e => wm.patchGoal(goal.id, { metricId: e.target.value || null })} aria-label="Progress source" style={inputStyle(t, { width: "auto", padding: "5px 6px", fontSize: 11 })}>
+          <option value="">Update by hand</option>
+          {config.metrics.map(m => <option key={m.id} value={m.id}>Auto from {m.label}</option>)}
+        </select>
+      </div>
     </div>
   );
 }
 
-function AddGoal({ wm, year, q }) {
+function GoalLine({ wm, goal, open, onToggle }) {
+  const { t } = wm;
+  const prog = wm.goalProgress(goal);
+  const area = wm.areaOf(goal.area);
+  const st   = goal.status;
+  const tag  = { hit: ["HIT", "#22c55e"], missed: ["MISSED", "#ef4444"], moved: ["MOVED ON", "#f59e0b"] }[st];
+  return (
+    <div style={{ borderBottom: `1px solid ${t.rowSep}` }}>
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        style={{ display: "flex", gap: 9, width: "100%", textAlign: "left", background: "none", border: "none", padding: "8px 0", cursor: "pointer", fontFamily: "inherit", alignItems: "stretch" }}
+      >
+        <span style={{ width: 3, borderRadius: 2, background: area.color, flexShrink: 0 }} />
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.35, overflowWrap: "anywhere", color: st === "open" ? t.text : st === "missed" ? "#ef4444" : t.sub, textDecoration: st === "hit" || st === "moved" ? "line-through" : "none" }}>
+              {goal.title || "Untitled goal"}
+            </span>
+            {goal.slips > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b" }}>slipped ×{goal.slips}</span>}
+          </span>
+          {goal.target != null && (
+            <span style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
+              <span style={{ flex: 1 }}><Bar t={t} pct={prog.pct} color={area.color} h={3} /></span>
+              <span style={{ fontSize: 10.5, color: t.sub, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{prog.text}</span>
+            </span>
+          )}
+        </span>
+        {tag && <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: 1, color: tag[1], flexShrink: 0, paddingTop: 3 }}>{tag[0]}</span>}
+      </button>
+      {open && <GoalEditor wm={wm} goal={goal} />}
+    </div>
+  );
+}
+
+function AddGoal({ wm, year, q, onDone }) {
   const { t, areas, config } = wm;
-  const [open, setOpen]   = useState(false);
   const [title, setTitle] = useState("");
   const [area, setArea]   = useState(areas[0]?.id);
   const [nums, setNums]   = useState({ start: "", target: "", unit: "", metricId: "" });
@@ -977,40 +1218,134 @@ function AddGoal({ wm, year, q }) {
       id: uid(), year, q, area, title: v, status: "open", slips: 0,
       start: num(nums.start), target: num(nums.target), unit: nums.unit.trim(), current: null, metricId: nums.metricId || null,
     }]);
-    setTitle(""); setNums({ start: "", target: "", unit: "", metricId: "" }); setOpen(false);
+    onDone?.();
   };
 
   return (
-    <div style={{ marginTop: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <AreaPicker value={area} areas={areas} onChange={setArea} />
-        <input value={title} onChange={e => setTitle(e.target.value)} onKeyDown={e => { if (e.key === "Enter") submit(); }} placeholder="Add a goal…" style={inputStyle(t, { flex: 1 })} />
-        <button onClick={() => setOpen(o => !o)} title="Make it measurable" style={btnStyle(t, "ghost", { padding: "7px 9px" })}>#</button>
-        <button onClick={submit} style={btnStyle(t, "solid")}>Add</button>
+        <input
+          autoFocus
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") submit(); if (e.key === "Escape") onDone?.(); }}
+          placeholder={`A Q${q} goal…`}
+          aria-label={`New Q${q} goal`}
+          style={inputStyle(t, { flex: 1 })}
+        />
       </div>
-      {open && (
-        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", paddingLeft: 24 }}>
-          <input value={nums.start} onChange={e => setNums({ ...nums, start: e.target.value })} placeholder="Start (e.g. 0)" inputMode="decimal" style={inputStyle(t, { width: 104 })} />
-          <input value={nums.target} onChange={e => setNums({ ...nums, target: e.target.value })} placeholder="Target" inputMode="decimal" style={inputStyle(t, { width: 84 })} />
-          <input value={nums.unit} onChange={e => setNums({ ...nums, unit: e.target.value })} placeholder="Unit" style={inputStyle(t, { width: 72 })} />
-          <select value={nums.metricId} onChange={e => setNums({ ...nums, metricId: e.target.value })} style={inputStyle(t, { width: "auto" })}>
-            <option value="">Update by hand</option>
-            {config.metrics.map(m => <option key={m.id} value={m.id}>Auto from {m.label}</option>)}
-          </select>
-        </div>
-      )}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingLeft: 24, alignItems: "center" }}>
+        <input value={nums.start} onChange={e => setNums({ ...nums, start: e.target.value })} placeholder="From (optional)" inputMode="decimal" aria-label="Start value" style={inputStyle(t, { width: 116, padding: "6px 8px", fontSize: 12 })} />
+        <input value={nums.target} onChange={e => setNums({ ...nums, target: e.target.value })} placeholder="Target" inputMode="decimal" aria-label="Target value" style={inputStyle(t, { width: 76, padding: "6px 8px", fontSize: 12 })} />
+        <input value={nums.unit} onChange={e => setNums({ ...nums, unit: e.target.value })} placeholder="Unit" aria-label="Unit" style={inputStyle(t, { width: 64, padding: "6px 8px", fontSize: 12 })} />
+        <select value={nums.metricId} onChange={e => setNums({ ...nums, metricId: e.target.value })} aria-label="Progress source" style={inputStyle(t, { width: "auto", padding: "5px 6px", fontSize: 12 })}>
+          <option value="">Update by hand</option>
+          {config.metrics.map(m => <option key={m.id} value={m.id}>Auto from {m.label}</option>)}
+        </select>
+        <span style={{ flex: 1 }} />
+        <button onClick={() => onDone?.()} style={btnStyle(t, "ghost", { padding: "6px 10px" })}>Cancel</button>
+        <button onClick={submit} style={btnStyle(t, "solid", { padding: "6px 12px" })}>Add goal</button>
+      </div>
     </div>
+  );
+}
+
+function MiniMonth({ wm, y, m0, openDay }) {
+  const { t } = wm;
+  const mk    = `${y}-${pad(m0 + 1)}`;
+  const first = `${mk}-01`;
+  return (
+    <div style={{ minWidth: 0 }}>
+      <button
+        onClick={() => wm.openMonth(first)}
+        title={`Open ${MONTH_NAMES[m0]}`}
+        style={{ background: "none", border: "none", padding: "0 0 6px", cursor: "pointer", fontSize: 11, fontWeight: 800, letterSpacing: 2, color: monthOf(wm.today) === mk ? t.text : t.sub, fontFamily: "inherit" }}
+      >{MONTH_SHORT[m0]}</button>
+      <div className="wm-mini">
+        {WEEKDAYS.map((d, i) => <div key={i} className="wm-mini-wd" style={{ fontSize: 8.5, color: t.dim, textAlign: "center", fontWeight: 700 }}>{d[0]}</div>)}
+        {Array.from({ length: weekdayIx(first) }, (_, i) => <div key={`l${i}`} />)}
+        {Array.from({ length: daysInMonth(y, m0) }, (_, i) => {
+          const s   = `${mk}-${pad(i + 1)}`;
+          const r   = wm.ratingById(wm.getDay(s).rating);
+          const fut = s > wm.today;
+          return (
+            <button
+              key={s}
+              onClick={() => openDay(s)}
+              className="wm-mini-day"
+              title={`${fmtDay(s)}${r ? ` · ${r.label}` : ""}`}
+              aria-label={`${fmtDay(s)}${r ? `, ${r.label}` : ""}`}
+              style={{
+                background: r ? r.color : fut ? "transparent" : t.empty,
+                color: r ? "#0a0a0a" : fut ? t.dim : t.sub,
+                border: s === wm.today ? `1.5px solid ${t.text}` : `1px solid ${fut ? t.border : "transparent"}`,
+                fontWeight: r ? 700 : 500,
+              }}
+            >{i + 1}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function QuarterBand({ wm, year, q, currentQ, openDay }) {
+  const { t, config } = wm;
+  const [openGoal, setOpenGoal] = useState(null);
+  const [adding, setAdding]     = useState(false);
+  const [qs, qe]  = quarterRange(year, q);
+  const goals     = wm.goals.filter(g => g.year === year && g.q === q);
+  const ended     = qe < wm.today;
+  const isNow     = q === currentQ;
+  const pending   = ended ? goals.filter(g => g.status === "open").length : 0;
+  const hit       = goals.filter(g => g.status === "hit").length;
+  const daysLeft  = isNow ? Math.round((fromKey(qe) - fromKey(wm.today)) / 86400000) : null;
+  const noteKey   = `${year}-Q${q}`;
+  const note      = config.quarterNotes?.[noteKey] || "";
+
+  return (
+    <section className="wm-qband" style={{ background: t.card, border: `1px solid ${isNow ? "#22c55e66" : t.border}`, borderRadius: 14, padding: 16 }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4 }}>
+          <h3 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: -0.5, color: t.text }}>Q{q}</h3>
+          <span style={{ fontSize: 10, color: t.sub, letterSpacing: 2, fontWeight: 700 }}>{MONTH_SHORT[q * 3 - 3]}–{MONTH_SHORT[q * 3 - 1]}</span>
+          <span style={{ flex: 1 }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: isNow ? "#22c55e" : t.sub }}>
+            {isNow ? `NOW · ${daysLeft}d left` : ended ? `${hit}/${goals.length} hit` : qs > wm.today ? "AHEAD" : ""}
+          </span>
+        </div>
+        {pending > 0 && <div style={{ fontSize: 11.5, color: "#f59e0b", margin: "2px 0 4px", lineHeight: 1.4 }}>{pending} goal{pending > 1 ? "s" : ""} still open. Tap each one: hit, missed, or move on.</div>}
+        {goals.length === 0 && !adding && <div style={{ fontSize: 13, color: t.dim, padding: "6px 0" }}>No goals for Q{q} yet.</div>}
+        {goals.map(g => <GoalLine key={g.id} wm={wm} goal={g} open={openGoal === g.id} onToggle={() => setOpenGoal(o => (o === g.id ? null : g.id))} />)}
+        {adding
+          ? <AddGoal wm={wm} year={year} q={q} onDone={() => setAdding(false)} />
+          : <button onClick={() => setAdding(true)} style={{ background: "none", border: "none", color: t.sub, fontSize: 12, cursor: "pointer", padding: "8px 0 2px", fontFamily: "inherit" }}>+ Add goal</button>}
+        <textarea
+          className="wm-ghost"
+          value={note}
+          onChange={e => wm.setConfig({ quarterNotes: { ...config.quarterNotes, [noteKey]: e.target.value } })}
+          placeholder="Quarter thesis (optional)"
+          aria-label={`Q${q} note`}
+          rows={Math.max(1, Math.min(4, Math.ceil(note.length / 55)))}
+          style={{ marginTop: 6, width: "100%", resize: "vertical", background: "transparent", color: t.sub, fontSize: 12, fontStyle: "italic", lineHeight: 1.5, fontFamily: "inherit", borderRadius: 8, padding: "6px 8px", outline: "none", display: "block" }}
+        />
+      </div>
+      <div className="wm-qmonths">
+        {[0, 1, 2].map(i => <MiniMonth key={i} wm={wm} y={year} m0={q * 3 - 3 + i} openDay={openDay} />)}
+      </div>
+    </section>
   );
 }
 
 function YearView({ wm, year, setDate, openDay }) {
   const { t, config, ratings } = wm;
-  const today = wm.today;
-  const currentQ = Number(today.slice(0, 4)) === year ? quarterOf(today) : year < Number(today.slice(0, 4)) ? 5 : 0;
+  const today    = wm.today;
+  const thisYear = Number(today.slice(0, 4));
+  const currentQ = thisYear === year ? quarterOf(today) : 0;
 
-  // Heatmap + streaks
   const counts = Object.fromEntries(ratings.map(r => [r.id, 0]));
-  let unrated = 0, streak = 0, best = 0, run = 0;
+  let unrated = 0, best = 0, run = 0;
   for (let m0 = 0; m0 < 12; m0++) {
     for (let d = 1; d <= daysInMonth(year, m0); d++) {
       const s = `${year}-${pad(m0 + 1)}-${pad(d)}`;
@@ -1018,148 +1353,90 @@ function YearView({ wm, year, setDate, openDay }) {
       const r = wm.getDay(s).rating;
       if (r && counts[r] != null) counts[r]++;
       else if (s < today) unrated++;
+      // Rest and away days neither extend nor break a streak; an unrated today doesn't break it yet
       if (r === "won") { run++; best = Math.max(best, run); }
       else if (r !== "rest" && r !== "away" && s !== today) run = 0;
     }
   }
-  streak = run;
 
   const [newRule, setNewRule] = useState("");
+  const addRule = () => { const v = newRule.trim(); if (!v) return; wm.setConfig({ rules: [...config.rules, v] }); setNewRule(""); };
 
   return (
     <div>
       <NavRow
         t={t}
         label={`${year}`}
-        sub={currentQ >= 1 && currentQ <= 4 ? `Q${currentQ} · ${Math.max(0, Math.round((new Date(year, 11, 31) - fromKey(today)) / 86400000))} days left in the year` : null}
+        sub={currentQ ? `Q${currentQ} · ${Math.max(0, Math.round((new Date(year, 11, 31) - fromKey(today)) / 86400000))} days left in the year` : null}
         onPrev={() => setDate(`${year - 1}-01-01`)}
         onNext={() => setDate(`${year + 1}-01-01`)}
-        right={Number(today.slice(0, 4)) !== year && <button onClick={() => setDate(today)} style={btnStyle(t)}>This year</button>}
+        right={thisYear !== year && <button onClick={() => setDate(today)} style={btnStyle(t)}>This year</button>}
       />
 
-      <Card t={t} title="MISSION" style={{ marginBottom: 16 }}>
-        <NoteArea t={t} rows={2} value={config.mission} onChange={v => wm.setConfig({ mission: v })} placeholder="Why this year matters. Read it every morning." />
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 12 }}>
-          {wm.areas.filter(a => a.id !== LIFE_AREA.id).map(a => (
-            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-              <span style={{ width: 9, height: 9, borderRadius: "50%", background: a.color }} />
-              <span style={{ color: t.text, fontWeight: 600 }}>{a.label}</span>
-              {a.goal && <span style={{ color: t.sub }}>{a.goal}</span>}
-            </div>
-          ))}
+      <div className="wm-year">
+        <div className="wm-year-q">
+          {[1, 2, 3, 4].map(q => <QuarterBand key={`${year}-${q}`} wm={wm} year={year} q={q} currentQ={currentQ} openDay={openDay} />)}
         </div>
-      </Card>
 
-      <div className="wm-quarters" style={{ marginBottom: 16 }}>
-        {[1, 2, 3, 4].map(q => {
-          const [qs, qe] = quarterRange(year, q);
-          const goals    = wm.goals.filter(g => g.year === year && g.q === q);
-          const ended    = qe < today;
-          const isNow    = q === currentQ;
-          const pending  = ended ? goals.filter(g => g.status === "open").length : 0;
-          const hit      = goals.filter(g => g.status === "hit").length;
-          const daysLeft = isNow ? Math.round((fromKey(qe) - fromKey(today)) / 86400000) : null;
-          return (
-            <Card
-              key={q}
+        <div className="wm-year-top">
+          <Card t={t} title="MISSION">
+            <NoteArea
               t={t}
-              title={`Q${q} · ${MONTH_SHORT[q * 3 - 3]}–${MONTH_SHORT[q * 3 - 1]}`}
-              right={
-                <span style={{ fontSize: 11, fontWeight: 700, color: isNow ? "#22c55e" : t.sub }}>
-                  {isNow ? `NOW · ${daysLeft}d left` : ended ? `${hit}/${goals.length} hit` : qs > today ? "AHEAD" : ""}
-                </span>
-              }
-              style={isNow ? { borderColor: "#22c55e55" } : undefined}
-            >
-              {pending > 0 && (
-                <div style={{ fontSize: 12, color: "#f59e0b", background: "#f59e0b14", border: "1px solid #f59e0b44", borderRadius: 8, padding: "7px 10px", marginBottom: 8 }}>
-                  {pending} goal{pending > 1 ? "s" : ""} still open from a finished quarter. Mark each hit, missed, or move it on.
+              rows={Math.max(3, Math.ceil((config.mission?.length || 0) / 28) + 1)}
+              value={config.mission}
+              onChange={v => wm.setConfig({ mission: v })}
+              placeholder="Why this year matters. Read it every morning."
+              style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.45 }}
+            />
+          </Card>
+          <Card t={t} title="KEY">
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              {wm.areas.map(a => (
+                <div key={a.id} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 3, background: a.color, marginTop: 3, flexShrink: 0 }} />
+                  <span style={{ fontSize: 12.5, lineHeight: 1.4, minWidth: 0 }}>
+                    <b style={{ color: t.text }}>{a.label}</b>
+                    {a.goal && <span style={{ color: t.sub }}> · {a.goal}</span>}
+                  </span>
                 </div>
-              )}
-              {goals.length === 0 && <div style={{ fontSize: 13, color: t.dim }}>No goals set.</div>}
-              {goals.map(g => <GoalRow key={g.id} wm={wm} goal={g} />)}
-              <AddGoal wm={wm} year={year} q={q} />
-              <div style={{ marginTop: 10 }}>
-                <NoteArea
-                  t={t}
-                  rows={Math.max(1, Math.min(4, Math.ceil((config.quarterNotes?.[`${year}-Q${q}`]?.length || 0) / 60)))}
-                  value={config.quarterNotes?.[`${year}-Q${q}`]}
-                  onChange={v => wm.setConfig({ quarterNotes: { ...config.quarterNotes, [`${year}-Q${q}`]: v } })}
-                  placeholder="Quarter thesis / note"
-                />
+              ))}
+            </div>
+          </Card>
+          <Card t={t} title="DAYS" right={<span style={{ fontSize: 11, color: t.sub }}>won streak {run} · best {best}</span>}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {ratings.map(r => (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 12.5 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 3, background: r.color, flexShrink: 0 }} />
+                  <span style={{ flex: 1, color: t.sub }}>{r.label}</span>
+                  <b style={{ color: t.text, fontVariantNumeric: "tabular-nums" }}>{counts[r.id]}</b>
+                </div>
+              ))}
+              <div style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 12.5 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: t.empty, flexShrink: 0 }} />
+                <span style={{ flex: 1, color: t.sub }}>Not rated</span>
+                <b style={{ color: t.text, fontVariantNumeric: "tabular-nums" }}>{unrated}</b>
               </div>
-            </Card>
-          );
-        })}
+            </div>
+          </Card>
+        </div>
+
+        <div className="wm-year-rules">
+          <Card t={t} title="RULES">
+            {config.rules.length === 0 && <div style={{ fontSize: 13, color: t.dim }}>Non-negotiables. They show at the top of each day.</div>}
+            {config.rules.map((r, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${t.rowSep}` }}>
+                <span style={{ fontSize: 12, color: t.sub, width: 16, fontVariantNumeric: "tabular-nums" }}>{i + 1}</span>
+                <InlineText t={t} value={r} onSave={v => wm.setConfig({ rules: config.rules.map((x, j) => (j === i ? v : x)) })} style={{ flex: 1, fontSize: 13, color: t.text }} />
+                <button aria-label="Delete rule" onClick={() => wm.setConfig({ rules: config.rules.filter((_, j) => j !== i) })} style={iconBtn(t)}>×</button>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <input value={newRule} onChange={e => setNewRule(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addRule(); }} placeholder="Add a rule…" aria-label="New rule" style={inputStyle(t, { flex: 1 })} />
+              <button onClick={addRule} style={btnStyle(t, "solid")}>Add</button>
+            </div>
+          </Card>
+        </div>
       </div>
-
-      <Card
-        t={t}
-        title="EVERY DAY OF THE YEAR"
-        right={<span style={{ fontSize: 11, color: t.sub }}>won streak {streak} · best {best}</span>}
-        style={{ marginBottom: 16 }}
-      >
-        <div className="wm-heat">
-          <div />
-          {Array.from({ length: 31 }, (_, i) => (
-            <div key={i} className="wm-heat-num" style={{ fontSize: 8, color: t.dim, textAlign: "center" }}>{(i + 1) % 5 === 0 || i === 0 ? i + 1 : ""}</div>
-          ))}
-          {MONTH_SHORT.map((label, m0) => [
-            <div key={label} style={{ fontSize: 9, color: t.sub, fontWeight: 700, letterSpacing: 1, display: "flex", alignItems: "center" }}>{label}</div>,
-            ...Array.from({ length: 31 }, (_, i) => {
-              if (i >= daysInMonth(year, m0)) return <div key={`${label}${i}`} />;
-              const s = `${year}-${pad(m0 + 1)}-${pad(i + 1)}`;
-              const r = wm.ratingById(wm.getDay(s).rating);
-              return (
-                <button
-                  key={s}
-                  onClick={() => openDay(s)}
-                  title={`${fmtDay(s)}${r ? ` · ${r.label}` : ""}`}
-                  aria-label={`${fmtDay(s)}${r ? `, ${r.label}` : ""}`}
-                  style={{
-                    aspectRatio: "1", borderRadius: 3, padding: 0, cursor: "pointer", minWidth: 0,
-                    background: r ? r.color : s > today ? "transparent" : t.empty,
-                    border: s === today ? `1.5px solid ${t.text}` : s > today ? `1px solid ${t.border}` : "none",
-                  }}
-                />
-              );
-            }),
-          ])}
-        </div>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 12, fontSize: 12 }}>
-          {ratings.map(r => (
-            <span key={r.id} style={{ display: "flex", alignItems: "center", gap: 6, color: t.sub }}>
-              <span style={{ width: 10, height: 10, borderRadius: 3, background: r.color }} />
-              {r.label} <b style={{ color: t.text, fontVariantNumeric: "tabular-nums" }}>{counts[r.id]}</b>
-            </span>
-          ))}
-          <span style={{ display: "flex", alignItems: "center", gap: 6, color: t.sub }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: t.empty }} />
-            Not rated <b style={{ color: t.text }}>{unrated}</b>
-          </span>
-        </div>
-      </Card>
-
-      <Card t={t} title="RULES">
-        {config.rules.length === 0 && <div style={{ fontSize: 13, color: t.dim }}>Non-negotiables. They show at the top of today.</div>}
-        {config.rules.map((r, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${t.rowSep}` }}>
-            <span style={{ fontSize: 12, color: t.sub, width: 16, fontVariantNumeric: "tabular-nums" }}>{i + 1}</span>
-            <InlineText t={t} value={r} onSave={v => wm.setConfig({ rules: config.rules.map((x, j) => (j === i ? v : x)) })} style={{ flex: 1, fontSize: 13, color: t.text }} />
-            <button aria-label="Delete rule" onClick={() => wm.setConfig({ rules: config.rules.filter((_, j) => j !== i) })} style={iconBtn(t)}>×</button>
-          </div>
-        ))}
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <input
-            value={newRule}
-            onChange={e => setNewRule(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && newRule.trim()) { wm.setConfig({ rules: [...config.rules, newRule.trim()] }); setNewRule(""); } }}
-            placeholder="Add a rule…"
-            style={inputStyle(t, { flex: 1 })}
-          />
-          <button onClick={() => { if (newRule.trim()) { wm.setConfig({ rules: [...config.rules, newRule.trim()] }); setNewRule(""); } }} style={btnStyle(t, "solid")}>Add</button>
-        </div>
-      </Card>
     </div>
   );
 }
@@ -1303,7 +1580,7 @@ function SetupView({ wm }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function WarMap({ session, darkMode = true }) {
   const store = useStore(session);
-  const [view, setViewState] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || "day"; } catch { return "day"; } });
+  const [view, setViewState] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || "month"; } catch { return "month"; } });
   const [date, setDate] = useState(todayKey);
   const today = todayKey();
 
@@ -1386,8 +1663,13 @@ export default function WarMap({ session, darkMode = true }) {
 
   const patchGoal  = (id, patch) => setGoals(goals.map(g => (g.id === id ? { ...g, ...patch } : g)));
   const deleteGoal = (id) => { if (window.confirm("Delete this goal?")) setGoals(goals.filter(g => g.id !== id)); };
-  const moveGoalToNextQuarter = (g) => {
+  // A goal slipping out of a finished quarter lands in the current one, not another past quarter
+  const nextQuarterFor = (g) => {
     const next = g.q === 4 ? { year: g.year + 1, q: 1 } : { year: g.year, q: g.q + 1 };
+    return quarterRange(next.year, next.q)[1] < today ? { year: Number(today.slice(0, 4)), q: quarterOf(today) } : next;
+  };
+  const moveGoalToNextQuarter = (g) => {
+    const next = nextQuarterFor(g);
     setGoals([
       ...goals.map(x => (x.id === g.id ? { ...x, status: "moved" } : x)),
       { ...g, ...next, id: uid(), status: "open", slips: (g.slips || 0) + 1, current: g.current },
@@ -1396,8 +1678,10 @@ export default function WarMap({ session, darkMode = true }) {
 
   const wm = {
     t, store, today, config, setConfig, goals, setGoals, weeks, setWeek, months, setMonth,
-    getDay, updateDay, routineFor, moveTask, weekMetrics, goalProgress, patchGoal, deleteGoal, moveGoalToNextQuarter,
+    getDay, updateDay, routineFor, moveTask, weekMetrics, goalProgress, patchGoal, deleteGoal, moveGoalToNextQuarter, nextQuarterFor,
     areas, areaOf, ratings, ratingById, ratingLabel, setView,
+    openWeek:  (s) => { setDate(s); setView("week"); },
+    openMonth: (s) => { setDate(s); setView("month"); },
   };
 
   const year = Number(date.slice(0, 4));
@@ -1407,30 +1691,59 @@ export default function WarMap({ session, darkMode = true }) {
     <div style={{ minHeight: "calc(100vh - 52px)", background: t.bg, color: t.text, fontFamily: "system-ui, -apple-system, sans-serif" }}>
       <style>{`
         .wm-wrap { max-width: 1180px; margin: 0 auto; padding: 20px 20px 48px; }
+        .wm-wrap.wm-wide { max-width: 1480px; }
         .wm-wrap *, .wm-wrap *::before, .wm-wrap *::after { box-sizing: border-box; }
         .wm-grid2 { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-        .wm-quarters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
         .wm-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
-        .wm-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(0, 0.8fr); grid-template-rows: auto; grid-auto-rows: minmax(104px, auto); gap: 6px; }
-        .wm-heat { display: grid; grid-template-columns: 34px repeat(31, minmax(0, 1fr)); gap: 3px; }
         .wm-setup-row { display: flex; gap: 10px; align-items: center; padding: 8px 0; flex-wrap: wrap; }
         .wm-wrap input:focus, .wm-wrap textarea:focus, .wm-wrap select:focus { border-color: ${t.sub} !important; }
         .wm-wrap button:focus-visible { outline: 2px solid ${t.sub}; outline-offset: 2px; }
-        .wm-cell:hover { filter: brightness(${t.dark ? 1.25 : 0.97}); }
+
+        /* Month: the sheet's page — lists in the cells, weekly goals on the right */
+        .wm-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)) minmax(0, 1.15fr); grid-template-rows: auto; grid-auto-rows: minmax(132px, auto); gap: 6px; }
+        .wm-month-panel { display: none; }
+        .wm-task-actions { opacity: 0; transition: opacity 0.15s; }
+        .wm-task:hover .wm-task-actions, .wm-task:focus-within .wm-task-actions, .wm-daylist-panel .wm-task-actions { opacity: 1; }
+        .wm-add { opacity: 0.3; transition: opacity 0.15s; }
+        .wm-daycell:hover .wm-add, .wm-weekgoals:hover .wm-add, .wm-add:focus-visible, .wm-daylist-panel .wm-add { opacity: 1; }
+        @media (hover: none) { .wm-task-actions, .wm-add { opacity: 1; } }
+
+        /* Year: the dashboard — quarter bands of goals beside their months */
+        .wm-year { display: grid; grid-template-columns: minmax(0, 1fr) 300px; grid-template-areas: "q top" "q rules"; grid-template-rows: auto 1fr; gap: 16px; align-items: start; }
+        .wm-year-q { grid-area: q; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+        .wm-year-top { grid-area: top; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+        .wm-year-rules { grid-area: rules; min-width: 0; }
+        .wm-qband { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.4fr); gap: 24px; align-items: start; }
+        .wm-qmonths { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+        .wm-mini { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+        .wm-mini-day { aspect-ratio: 1; min-width: 0; padding: 0; border-radius: 4px; font-size: 10px; font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
+        .wm-ghost { border: 1px dashed transparent; }
+        .wm-ghost:hover, .wm-ghost:focus { border-color: ${t.inputBorder}; }
+
+        @media (max-width: 1100px) {
+          .wm-year { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "q" "rules"; }
+          .wm-year-top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+        }
         @media (max-width: 860px) {
-          .wm-grid2, .wm-quarters { grid-template-columns: minmax(0, 1fr); }
+          .wm-grid2, .wm-qband { grid-template-columns: minmax(0, 1fr); }
         }
         @media (max-width: 700px) {
           .wm-wrap { padding: 14px 12px 40px; }
-          .wm-month { grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: minmax(54px, auto); gap: 4px; }
-          .wm-weekcol, .wm-cell-tasks, .wm-cell-pct { display: none !important; }
           .wm-strip { gap: 4px; }
-          .wm-heat { gap: 2px; grid-template-columns: 28px repeat(31, minmax(0, 1fr)); }
-          .wm-heat-num { visibility: hidden; }
+          .wm-year-top { grid-template-columns: minmax(0, 1fr); }
+          .wm-qmonths { gap: 8px; }
+          .wm-mini { gap: 2px; }
+          .wm-mini-day { font-size: 0; border-radius: 2px; }
+          .wm-month { grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: minmax(48px, auto); gap: 4px; }
+          .wm-weekcol, .wm-cell-body, .wm-cell-pct, .wm-cell-dot { display: none !important; }
+          .wm-daynum { pointer-events: none; }
+          .wm-daycell { cursor: pointer; }
+          .wm-daycell.is-sel { outline: 2px solid ${t.text}; outline-offset: 1px; }
+          .wm-month-panel { display: flex; flex-direction: column; gap: 16px; }
         }
       `}</style>
 
-      <div className="wm-wrap">
+      <div className={`wm-wrap${view === "month" || view === "year" ? " wm-wide" : ""}`}>
         <header style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 18 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 10, color: t.sub, letterSpacing: 3, fontWeight: 700 }}>WAR MAP {Number(today.slice(0, 4))}</div>
@@ -1444,10 +1757,10 @@ export default function WarMap({ session, darkMode = true }) {
             value={view}
             onChange={setView}
             options={[
-              { id: "day",   label: "Day" },
-              { id: "week",  label: "Week" },
-              { id: "month", label: "Month" },
               { id: "year",  label: "Year" },
+              { id: "month", label: "Month" },
+              { id: "week",  label: "Week" },
+              { id: "day",   label: "Day" },
               { id: "setup", label: "Setup" },
             ]}
           />
