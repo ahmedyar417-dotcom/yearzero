@@ -7,10 +7,14 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
   try {
+    // Optional `betas` array in the body becomes the anthropic-beta header
+    const { betas, ...body } = req.body || {};
+    const headers = { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' };
+    if (Array.isArray(betas) && betas.length) headers['anthropic-beta'] = betas.join(',');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify(req.body),
+      headers,
+      body: JSON.stringify(body),
     });
     const data = await response.json();
     if (!response.ok) return res.status(response.status).json({ error: data.error?.message || 'API error' });

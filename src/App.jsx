@@ -4,6 +4,7 @@ import Project100 from "./Project100";
 import Project25 from "./Project25";
 import HealthPanel from "./HealthPanel";
 import OutreachPanel from "./OutreachPanel";
+import WarMap from "./WarMap";
 import { supabase } from "./supabase";
 import AuthScreen from "./AuthScreen";
 
@@ -1264,7 +1265,7 @@ export default function App() {
             { key: "track",   label: "Track"      },
             { key: "p25",     label: "Project 25" },
             { key: "journal", label: "Journal"    },
-            { key: "plan",    label: "Plan"       },
+            { key: "plan",    label: "War Map"    },
           ].map(({ key, label }) => {
             const isActive = activeTab === key;
             return (
@@ -1358,7 +1359,9 @@ export default function App() {
         </div>
       )}
 
-      {(activeTab === "journal" || activeTab === "plan") && (
+      {activeTab === "plan" && <WarMap session={session} darkMode={isDark} />}
+
+      {activeTab === "journal" && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "calc(100vh - 52px)", color: isDark ? "#2a2a2a" : "#ccc", fontFamily: "system-ui", fontSize: 14, letterSpacing: 1 }}>
           Coming soon
         </div>
